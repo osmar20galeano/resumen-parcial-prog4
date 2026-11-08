@@ -7,6 +7,7 @@ const TEMAS = [
   { banco: "preguntas3", nombre: "Fuerza bruta", enlace: "modulo3_fuerza_bruta.html" },
   { banco: "preguntas4", nombre: "Recuperación segura de contraseñas", enlace: "modulo4_recuperacion.html" },
   { banco: "preguntas5", nombre: "Inyección de scripts (XSS)", enlace: "modulo5_xss.html" },
+  { banco: "preguntas6", nombre: "Inyección SQL", enlace: "modulo6_inyeccion_sql.html" },
   { banco: "preguntas_final", nombre: "Preguntas que combinan temas", enlace: "" }
 ];
 const POR_TEMA = 5; // preguntas al azar de cada módulo en el examen final

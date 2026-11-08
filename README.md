@@ -11,7 +11,8 @@ Sitio de estudio para el examen teórico del 2.º parcial de Programación IV (s
 | 03 | `modulo3_fuerza_bruta.html` | Fuerza bruta |
 | 04 | `modulo4_recuperacion.html` | Recuperación segura de contraseñas |
 | 05 | `modulo5_xss.html` | Inyección de scripts (XSS) |
-| 06 | `examen_final.html` | Examen final: 35 preguntas al azar de los 5 temas |
+| 06 | `modulo6_inyeccion_sql.html` | Inyección SQL |
+| 07 | `examen_final.html` | Examen final: 42 preguntas al azar de los 6 temas |
 
 ## Cómo usarlo
 

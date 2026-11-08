@@ -1,0 +1,395 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Módulo 6 · Inyección SQL</title>
+<link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+<header>
+  <div class="etiqueta">Programación · Seguridad informática · Módulo 6</div>
+  <h1>Inyección SQL</h1>
+  <p>Qué pasa cuando lo que escribe el usuario se pega dentro de la consulta SQL, cómo se rompe un login así y por qué las consultas preparadas lo evitan.</p>
+  <div class="chips">
+    <span class="chip">Informe 6 de 6</span>
+    <span class="chip">Comercial Alfa (ficticia)</span>
+    <span class="chip">PHP · mysqli · MySQL</span>
+    <span class="chip">Examen: 20 preguntas</span>
+  </div>
+</header>
+
+<div class="disposicion">
+  <nav class="indice" aria-label="Contenido">
+    <strong>CONTENIDO</strong>
+    <a href="#esencial">01 · Lo esencial</a>
+    <a href="#conceptos">02 · Conceptos</a>
+    <a href="#caso">03 · El caso del grupo</a>
+    <a href="#medidas">04 · Medidas de protección</a>
+    <a href="#codigo">05 · El código explicado</a>
+    <a href="#ejemplos">06 · Ejemplos paso a paso</a>
+    <a href="#pruebas">07 · Pruebas y resultados</a>
+    <a href="#trampas">08 · Trampas de examen</a>
+    <a href="#preguntas">09 · Preguntas probables</a>
+    <a href="#glosario">10 · Glosario</a>
+    <a href="#practica">11 · Examen de práctica</a>
+    <button type="button" class="boton-imprimir">Imprimir o guardar PDF</button>
+    <a class="volver" href="index.html">Volver al inicio</a>
+  </nav>
+
+  <main>
+    <!-- 01 Lo esencial -->
+    <section id="esencial">
+      <span class="numero">01 / EN 1 MINUTO</span>
+      <h2>Lo esencial</h2>
+      <ol class="esencial">
+        <li>Inyección SQL: el dato que escribe el usuario termina siendo <strong>parte del código SQL</strong> y cambia lo que hace la consulta.</li>
+        <li>Pasa cuando la consulta se arma <strong>concatenando</strong>: <code>"... WHERE usuario = '$usuario'"</code>.</li>
+        <li>La comilla <code>'</code> cierra el texto, <code>OR '1'='1</code> hace verdadera la condición y <code>--</code> o <code>#</code> comentan el resto.</li>
+        <li>La defensa es la <strong>consulta preparada</strong>: primero va la estructura con <code>?</code> y después los datos, que nunca se interpretan como código.</li>
+        <li>En mysqli: <code>prepare()</code> → <code>bind_param()</code> → <code>execute()</code> → <code>get_result()</code>.</li>
+        <li>En la prueba del grupo, <code>ana' -- -</code> entró sin la clave en la versión vulnerable y la protegida respondió <code>401</code>.</li>
+        <li>El hash de contraseñas <strong>no</strong> evita la inyección SQL, y la consulta preparada <strong>no</strong> evita el XSS.</li>
+      </ol>
+    </section>
+
+    <!-- 02 Conceptos -->
+    <section id="conceptos">
+      <span class="numero">02 / TEORÍA</span>
+      <h2>Conceptos</h2>
+
+      <h3>1. Qué es la inyección SQL</h3>
+      <p>Una consulta SQL es una orden para la base de datos. Si el programa pega adentro lo que escribió el usuario, ese texto puede traer pedazos de SQL que cambian la orden. Entonces la base hace lo que dice el atacante, no lo que quería el programador.</p>
+      <div class="ejemplo"><b class="titulo">Comparación</b>Es como un formulario de banco que dice “Pagar a: ______”. Si alguien escribe “Juan. Además, vaciar la cuenta” y el cajero lee todo como una orden, hace las dos cosas. Lo correcto es leer lo del hueco solo como un nombre.</div>
+
+      <h3>2. Concatenar contra consulta preparada</h3>
+      <div class="comparacion">
+        <div class="version"><span class="franja">Vulnerable</span>
+<pre><code>$sql = "SELECT * FROM usuarios
+        WHERE usuario = '$usuario' AND clave = '$clave'";</code></pre>
+          <p>Los datos se pegan dentro del texto de la consulta.</p>
+        </div>
+        <div class="version protegido"><span class="franja">Protegido</span>
+<pre><code>$sql = "SELECT * FROM usuarios
+        WHERE usuario = ? AND clave = ?";</code></pre>
+          <p>Los <code>?</code> son huecos; los datos van aparte.</p>
+        </div>
+      </div>
+
+      <h3>3. Cómo se rompe un login concatenado</h3>
+      <p>Tres piezas: la comilla <code>'</code> cierra el texto antes de tiempo; <code>OR '1'='1'</code> agrega una condición que siempre es verdadera; y <code>--</code> (con un espacio después) o <code>#</code> convierten en comentario todo lo que sigue. Ejemplo clásico de laboratorio, en usuario y clave:</p>
+<pre><code>Usuario:  ' OR '1'='1
+Clave:    ' OR '1'='1
+
+Consulta que queda armada:
+SELECT * FROM usuarios WHERE usuario = '' OR '1'='1' AND clave = '' OR '1'='1'
+-- el último OR '1'='1' es siempre verdadero: la condición entera da verdadero</code></pre>
+      <p class="chico">La condición termina siendo verdadera para todas las filas: la consulta devuelve usuarios y el login deja entrar. Solo para probar en un entorno local propio.</p>
+
+      <h3>4. Por qué la consulta preparada lo evita</h3>
+      <p>Con <code>prepare()</code> se manda primero la estructura de la consulta, con los <code>?</code>. La base la analiza y la deja fija. Después, con <code>bind_param()</code>, se mandan los datos: la base los usa solo como valores, nunca como código. Si alguien escribe <code>' OR '1'='1</code>, se busca un usuario que se llame literalmente así.</p>
+
+      <h3>5. prepare, bind_param, execute y get_result</h3>
+      <p><code>bind_param()</code> lleva una letra por cada <code>?</code>, en el mismo orden: <code>s</code> = texto (string), <code>i</code> = entero, <code>d</code> = decimal (double).</p>
+<pre><code>$stmt = $con-&gt;prepare("SELECT id, nombre FROM usuarios WHERE usuario = ?");
+$stmt-&gt;bind_param("s", $usuario);       // 1 ? → 1 letra
+$stmt-&gt;execute();
+$resultado = $stmt-&gt;get_result();       // el resultado del SELECT
+$fila = $resultado-&gt;fetch_assoc();      // una fila como arreglo
+
+$stmt = $con-&gt;prepare("INSERT INTO productos (nombre, stock, precio) VALUES (?, ?, ?)");
+$stmt-&gt;bind_param("sid", $nombre, $stock, $precio);   // 3 ? → 3 letras
+$stmt-&gt;execute();</code></pre>
+
+      <h3>6. El apóstrofo en un nombre</h3>
+      <p>No hace falta un atacante para romper una consulta concatenada: un cliente que se llama <code>O'Brien</code> tiene una comilla en el nombre. Esa comilla cierra el texto antes de tiempo y la consulta da error. Con la consulta preparada, el nombre se guarda tal cual.</p>
+<pre><code>INSERT INTO clientes (nombre) VALUES ('O'Brien')   -- error de sintaxis: el texto termina en 'O'
+INSERT INTO clientes (nombre) VALUES (?)           -- con bind_param("s", $nombre): se guarda O'Brien</code></pre>
+    </section>
+
+    <!-- 03 El caso -->
+    <section id="caso">
+      <span class="numero">03 / EL INFORME</span>
+      <h2>El caso del grupo</h2>
+      <div class="tabla-contenedor">
+        <table>
+          <tbody>
+            <tr><td><strong>Empresa</strong></td><td>Comercial Alfa (ficticia). Sistema administrativo con ciudades, clientes, productos, proveedores, personal y usuarios.</td></tr>
+            <tr><td><strong>Sistema</strong></td><td>HTML, CSS y JavaScript (<code>fetch</code> + <code>FormData</code>), PHP con mysqli y MySQL/MariaDB (base <code>comercial_alfa</code>) en XAMPP. Dos modalidades de login: concatenada y preparada.</td></tr>
+            <tr><td><strong>Qué fallaba</strong></td><td>El login vulnerable armaba la consulta pegando lo que llegaba del formulario.</td></tr>
+            <tr><td><strong>Riesgo</strong></td><td>Entrar al panel sin la contraseña y, según los permisos del usuario de la base, ver o modificar datos.</td></tr>
+          </tbody>
+        </table>
+      </div>
+    </section>
+
+    <!-- 04 Medidas -->
+    <section id="medidas">
+      <span class="numero">04 / PROTECCIÓN</span>
+      <h2>Las medidas de protección</h2>
+      <div class="tabla-contenedor">
+        <table>
+          <thead><tr><th>Medida</th><th>Contra qué protege</th></tr></thead>
+          <tbody>
+            <tr><td><strong>Consultas preparadas</strong> (<code>prepare</code> + <code>bind_param</code> + <code>execute</code>)</td><td>Inyección SQL. Es la defensa principal.</td></tr>
+            <tr><td>Contraseñas con hash y <code>password_verify()</code> (<a href="modulo2_contrasenas.html">módulo 2</a>)</td><td>Leer las claves si se filtra la base. No evita la inyección.</td></tr>
+            <tr><td>Límite de 5 fallos y bloqueo de 60 segundos (<a href="modulo3_fuerza_bruta.html">módulo 3</a>)</td><td>Fuerza bruta. No evita la inyección.</td></tr>
+            <tr><td>Usuario de la base con privilegios mínimos</td><td>Si algo falla, el daño queda limitado a lo que ese usuario puede hacer.</td></tr>
+            <tr><td>No mostrar los errores de MySQL en pantalla</td><td>Que el atacante vea nombres de tablas y columnas.</td></tr>
+            <tr><td>Validar los datos (ej.: stock no negativo, <code>422</code>)</td><td>Datos incorrectos. Ayuda, pero no reemplaza la consulta preparada.</td></tr>
+          </tbody>
+        </table>
+      </div>
+    </section>
+
+    <!-- 05 Código -->
+    <section id="codigo">
+      <span class="numero">05 / CÓDIGO</span>
+      <h2>El código explicado</h2>
+
+      <h3>1. Las consultas que registró el sistema (reales, Anexo B)</h3>
+      <div class="comparacion">
+        <div class="version"><span class="franja">Vulnerable</span>
+<pre><code>SELECT id, nombre FROM acceso_lectura WHERE usuario = 'ana' -- -' AND 0 = 1 LIMIT 1</code></pre>
+          <p>Se aceptó el acceso.</p>
+        </div>
+        <div class="version protegido"><span class="franja">Protegido</span>
+<pre><code>SELECT id, nombre FROM acceso_lectura WHERE usuario = ? AND ? = 1 LIMIT 1</code></pre>
+          <p>Se rechazó la entrada manipulada.</p>
+        </div>
+      </div>
+      <p><strong>Cómo leer la vulnerable.</strong> El sistema arma la condición con el usuario y con el resultado de verificar la clave (<code>0</code> = clave incorrecta). En el campo usuario se escribió <code>ana' -- -</code>:</p>
+      <ul>
+        <li><code>ana</code> es un usuario que existe.</li>
+        <li><code>'</code> cierra el texto del usuario.</li>
+        <li><code>-- -</code> abre un comentario: todo lo que sigue (<code>' AND 0 = 1 LIMIT 1</code>) se ignora. El <code>-</code> final asegura que haya un espacio después de <code>--</code>, que MySQL necesita para tomarlo como comentario.</li>
+      </ul>
+      <p>La base ejecuta en realidad <code>SELECT id, nombre FROM acceso_lectura WHERE usuario = 'ana'</code>: desapareció el control de la clave. En la protegida, los dos <code>?</code> reciben los datos aparte: se busca un usuario llamado literalmente <code>ana' -- -</code> con clave correcta <code>0 = 1</code>, y no hay ninguno.</p>
+
+      <h3>2. El login en PHP</h3>
+      <div class="ojo"><strong>Ojo:</strong> el informe no trae el código PHP, solo las consultas registradas. El código de esta parte es <strong>ilustrativo</strong>, con mysqli como en clase. Compara la clave en la consulta para que se vea simple; en un sistema real la clave se guarda con hash y se verifica con <code>password_verify()</code> (<a href="modulo2_contrasenas.html">módulo 2</a>).</div>
+      <div class="comparacion">
+        <div class="version"><span class="franja">Vulnerable</span>
+<pre><code>$usuario = $_POST['usuario'];
+$clave   = $_POST['clave'];
+
+$sql = "SELECT id, nombre FROM usuarios
+        WHERE usuario = '$usuario' AND clave = '$clave'";
+$resultado = $con-&gt;query($sql);
+$fila = $resultado-&gt;fetch_assoc();
+
+if ($fila) {
+    $_SESSION['usuario'] = $fila['nombre'];
+}</code></pre>
+          <p>Lo que escribe el usuario pasa a ser parte del SQL.</p>
+        </div>
+        <div class="version protegido"><span class="franja">Protegido</span>
+<pre><code>$usuario = $_POST['usuario'];
+$clave   = $_POST['clave'];
+
+$sql = "SELECT id, nombre FROM usuarios
+        WHERE usuario = ? AND clave = ?";
+$stmt = $con-&gt;prepare($sql);
+$stmt-&gt;bind_param("ss", $usuario, $clave);
+$stmt-&gt;execute();
+$resultado = $stmt-&gt;get_result();
+$fila = $resultado-&gt;fetch_assoc();
+
+if ($fila) {
+    $_SESSION['usuario'] = $fila['nombre'];
+}</code></pre>
+          <p>La estructura queda fija; los datos van aparte.</p>
+        </div>
+      </div>
+
+      <h3>Línea por línea</h3>
+      <div class="tabla-contenedor">
+        <table class="tabla-lineas">
+          <thead><tr><th>Línea</th><th>Qué hace</th><th>Por qué importa</th><th>Qué pasa si se quita o se cambia</th></tr></thead>
+          <tbody>
+            <tr><td><code>"... usuario = '$usuario' ..."</code></td><td>Pega el dato dentro del SQL.</td><td>Es la falla.</td><td>—</td></tr>
+            <tr><td><code>$con-&gt;query($sql)</code></td><td>Ejecuta el texto armado tal cual.</td><td>No separa estructura y datos.</td><td>—</td></tr>
+            <tr><td><code>"... usuario = ? AND clave = ?"</code></td><td>Deja huecos para los datos.</td><td>La estructura no se puede cambiar.</td><td>Si se vuelve a concatenar, vuelve la inyección.</td></tr>
+            <tr><td><code>$con-&gt;prepare($sql)</code></td><td>Manda la estructura a la base y la prepara.</td><td>La base la analiza antes de ver los datos.</td><td>Sin <code>prepare</code> no hay <code>bind_param</code>.</td></tr>
+            <tr><td><code>bind_param("ss", $usuario, $clave)</code></td><td>Asocia cada dato a un <code>?</code>, con su tipo.</td><td>Los datos nunca se interpretan como SQL.</td><td>Con menos o más letras que <code>?</code>, da error.</td></tr>
+            <tr><td><code>$stmt-&gt;execute()</code></td><td>Ejecuta la consulta con los datos.</td><td>Recién ahí se busca el usuario.</td><td>No se ejecuta nada.</td></tr>
+            <tr><td><code>$stmt-&gt;get_result()</code></td><td>Trae el resultado del <code>SELECT</code>.</td><td>Para leer las filas.</td><td>No hay filas para revisar.</td></tr>
+            <tr><td><code>fetch_assoc()</code></td><td>Devuelve una fila como arreglo, o <code>null</code> si no hay.</td><td>Decide si el login es correcto.</td><td>—</td></tr>
+          </tbody>
+        </table>
+      </div>
+    </section>
+
+    <!-- 06 Ejemplos -->
+    <section id="ejemplos">
+      <span class="numero">06 / ESCENARIOS</span>
+      <h2>Ejemplos paso a paso</h2>
+
+      <div class="escenario">
+        <h3>1. La entrada del informe: ana' -- - (S02 y S03)</h3>
+        <p class="accion"><strong>Acción:</strong> se escribe <code>ana' -- -</code> como usuario y una clave incorrecta.</p>
+        <div class="comparacion">
+          <div class="version"><span class="franja">Vulnerable</span><p>Queda <code>WHERE usuario = 'ana' -- -' AND 0 = 1</code>. Lo que sigue a <code>--</code> es comentario: se entra al menú con la clave incorrecta.</p></div>
+          <div class="version protegido"><span class="franja">Protegido</span><p>Se busca un usuario llamado <code>ana' -- -</code>: no existe. <code>HTTP 401</code> y vuelta al login.</p></div>
+        </div>
+      </div>
+
+      <div class="escenario">
+        <h3>2. El clásico: ' OR '1'='1</h3>
+        <p class="accion"><strong>Acción:</strong> se escribe <code>' OR '1'='1</code> en usuario y en clave.</p>
+        <div class="comparacion">
+          <div class="version"><span class="franja">Vulnerable</span><p><code>WHERE usuario = '' OR '1'='1' AND clave = '' OR '1'='1'</code>: siempre verdadero, devuelve filas y deja entrar.</p></div>
+          <div class="version protegido"><span class="franja">Protegido</span><p>Se busca un usuario cuyo nombre es el texto <code>' OR '1'='1</code>: no hay. Rechazado.</p></div>
+        </div>
+      </div>
+
+      <div class="escenario">
+        <h3>3. Con # en lugar de --</h3>
+        <p class="accion"><strong>Acción:</strong> se escribe <code>ana'#</code> como usuario.</p>
+        <div class="comparacion">
+          <div class="version"><span class="franja">Vulnerable</span><p><code>WHERE usuario = 'ana'#' AND clave = '...'</code>: en MySQL, <code>#</code> también es comentario. Entra como ana.</p></div>
+          <div class="version protegido"><span class="franja">Protegido</span><p>El <code>#</code> es parte del texto del usuario. Rechazado.</p></div>
+        </div>
+      </div>
+
+      <div class="escenario">
+        <h3>4. Credenciales normales, pero incorrectas (S01)</h3>
+        <p class="accion"><strong>Acción:</strong> un usuario real con una clave equivocada, sin nada raro.</p>
+        <div class="comparacion">
+          <div class="version"><span class="franja">Vulnerable</span><p><code>HTTP 401</code>: sin inyección, la consulta funciona como se esperaba.</p></div>
+          <div class="version protegido"><span class="franja">Protegido</span><p><code>HTTP 401</code>.</p></div>
+        </div>
+      </div>
+
+      <div class="escenario">
+        <h3>5. Un cliente que se llama O'Brien (C02)</h3>
+        <p class="accion"><strong>Acción:</strong> se da de alta un cliente con un apóstrofo en el nombre.</p>
+        <div class="comparacion">
+          <div class="version"><span class="franja">Concatenada</span><p>La comilla cierra el texto: error de sintaxis y el cliente no se guarda. (Es lo que pasaría; el grupo lo probó solo con la preparada.)</p></div>
+          <div class="version protegido"><span class="franja">Preparada</span><p>Se guarda tal cual y el <code>JOIN</code> con la ciudad funciona: “el apóstrofo no altera el SQL”.</p></div>
+        </div>
+      </div>
+
+      <div class="escenario">
+        <h3>6. Mostrar el error de MySQL</h3>
+        <p class="accion"><strong>Acción:</strong> el atacante escribe una comilla sola para ver qué pasa.</p>
+        <div class="comparacion">
+          <div class="version"><span class="franja">Con die($con-&gt;error)</span><p>Aparece el error de MySQL con parte de la consulta: el atacante aprende nombres de tablas y columnas.</p></div>
+          <div class="version protegido"><span class="franja">Mensaje genérico</span><p>“No se pudo iniciar sesión”. El error real queda en un registro del servidor.</p></div>
+        </div>
+      </div>
+    </section>
+
+    <!-- 07 Pruebas -->
+    <section id="pruebas">
+      <span class="numero">07 / EVIDENCIAS</span>
+      <h2>Pruebas y resultados</h2>
+      <p>Resultados observados por el grupo (Anexo A: 18 de 18 comprobaciones aprobadas, en una ejecución local).</p>
+      <div class="tabla-contenedor">
+        <table>
+          <thead><tr><th>Caso</th><th>Qué se probó</th><th>Resultado observado</th></tr></thead>
+          <tbody>
+            <tr><td>S01</td><td>Credenciales normales incorrectas</td><td><code>401</code> en las dos versiones</td></tr>
+            <tr><td>S02</td><td>Entrada SQL en la vulnerable</td><td>Con la clave incorrecta, se entró al menú</td></tr>
+            <tr><td>S03</td><td>La misma entrada en la protegida</td><td><code>401</code> y vuelta al login</td></tr>
+            <tr><td>S04</td><td>Credenciales legítimas</td><td>Acceso normal (token renovado)</td></tr>
+            <tr><td>S05</td><td>Comparar las consultas guardadas</td><td>Concatenada en una, con <code>?</code> en la otra; sin contraseñas registradas</td></tr>
+            <tr><td>C02</td><td>Cliente con apóstrofo</td><td>Se guardó como dato; el apóstrofo no alteró el SQL</td></tr>
+          </tbody>
+        </table>
+      </div>
+      <p class="chico">Las demás (C01 a C13) prueban el resto del sistema: altas, cambios y bajas, claves foráneas, el usuario con hash y el cierre de sesión. Todas aprobadas.</p>
+      <h3>Códigos HTTP de las pruebas</h3>
+      <div class="tabla-contenedor">
+        <table>
+          <thead><tr><th>Código</th><th>Significa</th><th>Dónde aparece</th></tr></thead>
+          <tbody>
+            <tr><td><code>401</code></td><td>No autorizado</td><td>Login rechazado (S01, S03); cuenta eliminada (C12)</td></tr>
+            <tr><td><code>302</code></td><td>Redirección</td><td>El panel manda al login sin sesión válida (C12)</td></tr>
+            <tr><td><code>409</code></td><td>Conflicto</td><td>Borrar algo que otro registro usa, o usuario duplicado (C08, C09)</td></tr>
+            <tr><td><code>422</code></td><td>Datos que no se pueden procesar</td><td>Stock negativo (C04) o eliminar la propia cuenta (C10)</td></tr>
+          </tbody>
+        </table>
+      </div>
+      <div class="ojo"><strong>Ojo (informe con datos que no coinciden):</strong> la “matriz comparativa” del cuerpo del informe está escrita como resultado esperado (“debe permitir…”, “faltan registros individuales”) y su última fila quedó cortada. En cambio, el Anexo A dice que las 18 pruebas se ejecutaron y se observaron. La consigna pide distinguir esperado de observado: la matriz principal debería tener los resultados del Anexo A. Además, fue una sola ejecución técnica, no varias repeticiones del grupo.</div>
+    </section>
+
+    <!-- 08 Trampas -->
+    <section id="trampas">
+      <span class="numero">08 / CUIDADO</span>
+      <h2>Trampas de examen</h2>
+      <div class="tabla-contenedor">
+        <table>
+          <thead><tr><th>Lo que parece</th><th>Lo correcto</th></tr></thead>
+          <tbody>
+            <tr><td>“Guardo las contraseñas con hash, así que no tengo inyección SQL.”</td><td>El hash protege las claves guardadas; no cambia cómo se arma la consulta. En el informe, la versión vulnerable tenía hash y se entró igual.</td></tr>
+            <tr><td>“Uso consultas preparadas, así que no tengo XSS.”</td><td>Protegen la base, no lo que se muestra en la página (<a href="modulo5_xss.html">módulo 5</a>).</td></tr>
+            <tr><td>“Escapar a mano las comillas es la defensa.”</td><td>Es fácil de olvidar o hacer mal; la defensa principal es la consulta preparada.</td></tr>
+            <tr><td>“Puedo poner un <code>?</code> en el nombre de la tabla.”</td><td>Los <code>?</code> son solo para valores. Para tablas o columnas se elige de una lista fija de nombres permitidos.</td></tr>
+            <tr><td>“Mostrar el error de MySQL ayuda a depurar.”</td><td>En producción le da pistas al atacante; se muestra un mensaje genérico.</td></tr>
+            <tr><td>“Da igual con qué usuario se conecta PHP a la base.”</td><td>Con privilegios mínimos, una inyección hace menos daño.</td></tr>
+            <tr><td>“<code>bind_param("s", $usuario, $clave)</code> está bien.”</td><td>Va una letra por cada <code>?</code>: con dos <code>?</code> son dos letras (<code>"ss"</code>).</td></tr>
+            <tr><td>“<code>--</code> sin espacio ya comenta.”</td><td>En MySQL, <code>--</code> necesita un espacio después; por eso se ve <code>-- -</code>. <code>#</code> no lo necesita.</td></tr>
+            <tr><td>“Validar la entrada reemplaza la consulta preparada.”</td><td>Validar ayuda; la consulta preparada sigue siendo necesaria.</td></tr>
+            <tr><td>“Si no hay atacante, concatenar no tiene problema.”</td><td>Un nombre como O'Brien rompe la consulta igual.</td></tr>
+          </tbody>
+        </table>
+      </div>
+    </section>
+
+    <!-- 09 Preguntas probables -->
+    <section id="preguntas">
+      <span class="numero">09 / REPASO</span>
+      <h2>Preguntas probables</h2>
+      <p class="chico">Tocá cada pregunta para ver la respuesta.</p>
+      <details><summary>¿Qué es la inyección SQL?</summary><p>Que el dato que escribe el usuario termine siendo parte del código SQL y cambie la consulta.</p></details>
+      <details><summary>¿Por qué es peligroso concatenar?</summary><p>Porque el texto del usuario se mezcla con la estructura de la consulta.</p></details>
+      <details><summary>¿Qué hacen la comilla, el OR y el comentario?</summary><p>La comilla cierra el texto; OR '1'='1 hace la condición siempre verdadera; -- o # anulan el resto de la consulta.</p></details>
+      <details><summary>¿Cómo evita la inyección la consulta preparada?</summary><p>Manda primero la estructura con ? y después los datos, que se usan solo como valores.</p></details>
+      <details><summary>¿Qué hacen prepare, bind_param, execute y get_result?</summary><p>Preparar la estructura, asociar los datos con su tipo, ejecutar y traer el resultado.</p></details>
+      <details><summary>¿Qué significan s, i y d en bind_param?</summary><p>Texto, entero y decimal. Va una letra por cada ?.</p></details>
+      <details><summary>¿Qué pasó con ana' -- - en el informe?</summary><p>En la vulnerable entró con la clave incorrecta (el comentario anuló AND 0 = 1). En la protegida, 401.</p></details>
+      <details><summary>¿Qué pasa con O'Brien?</summary><p>Rompe la consulta concatenada; con la preparada se guarda bien (C02).</p></details>
+      <details><summary>¿El hash de contraseñas evita la inyección SQL?</summary><p>No; protege las claves guardadas, otro problema.</p></details>
+      <details><summary>¿Se puede usar ? para el nombre de una tabla?</summary><p>No, solo para valores. Para tablas o columnas se usa una lista de nombres permitidos.</p></details>
+      <details><summary>¿Por qué no mostrar el error de MySQL?</summary><p>Porque da pistas de la estructura de la base.</p></details>
+      <details><summary>¿Qué significan 401, 302, 409 y 422?</summary><p>No autorizado, redirección, conflicto y datos que no se pueden procesar.</p></details>
+    </section>
+
+    <!-- 10 Glosario -->
+    <section id="glosario">
+      <span class="numero">10 / TÉRMINOS</span>
+      <h2>Glosario</h2>
+      <dl class="glosario">
+        <dt>SQL</dt><dd>Lenguaje para pedirle cosas a la base de datos.</dd>
+        <dt>Inyección SQL</dt><dd>Que un dato del usuario se convierta en parte del código SQL.</dd>
+        <dt>Concatenar</dt><dd>Pegar textos; aquí, pegar el dato dentro de la consulta.</dd>
+        <dt>Consulta preparada (parametrizada)</dt><dd>Consulta con <code>?</code> en lugar de los datos, que se mandan aparte.</dd>
+        <dt>prepare()</dt><dd>Prepara la estructura de la consulta.</dd>
+        <dt>bind_param()</dt><dd>Asocia los datos a los <code>?</code>, con su tipo (<code>s</code>, <code>i</code>, <code>d</code>).</dd>
+        <dt>execute()</dt><dd>Ejecuta la consulta preparada.</dd>
+        <dt>get_result() / fetch_assoc()</dt><dd>Traer el resultado / leer una fila como arreglo.</dd>
+        <dt>Comentario SQL</dt><dd><code>-- </code> (con espacio) o <code>#</code>: lo que sigue se ignora.</dd>
+        <dt>Payload</dt><dd>La entrada preparada para el ataque (ej.: <code>' OR '1'='1</code>).</dd>
+        <dt>Escapar</dt><dd>Marcar caracteres especiales para que no se interpreten; no es la defensa principal.</dd>
+        <dt>Privilegios mínimos</dt><dd>Que el usuario de la base solo pueda hacer lo necesario.</dd>
+        <dt>Clave foránea (FK)</dt><dd>Columna que relaciona un registro con otro (ej.: cliente con ciudad).</dd>
+        <dt>409 / 422</dt><dd>Conflicto / datos que no se pueden procesar.</dd>
+      </dl>
+    </section>
+
+    <!-- 11 Examen -->
+    <section id="practica">
+      <span class="numero">11 / PRÁCTICA</span>
+      <h2>Examen de práctica</h2>
+      <p>Elegí una opción en cada pregunta. Se bloquea la pregunta y se muestra la explicación. El botón del final mezcla preguntas y opciones.</p>
+      <div id="examen" data-banco="preguntas6"><p class="chico">El examen necesita JavaScript activado.</p></div>
+    </section>
+  </main>
+</div>
+
+<footer>Programación IV · Módulo 6: inyección SQL · Fuentes: informe del grupo, consigna del TP, manual de PHP y OWASP</footer>
+<script src="js/preguntas6.js"></script>
+<script src="js/script.js"></script>
+</body>
+</html>

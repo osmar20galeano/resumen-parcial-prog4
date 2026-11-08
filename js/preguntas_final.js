@@ -108,5 +108,27 @@ var preguntas_final = [
       { texto: "Cambiar rand() por random_int().", explicacion: "Eso es para el código de recuperación." }
     ],
     correcta: 0
+    },
+  {
+    pregunta: "Este código codifica la salida con htmlspecialchars. ¿Qué vulnerabilidad sigue teniendo?",
+    codigo: "$sql = \"SELECT nombre FROM clientes WHERE ciudad = '$ciudad'\";\nforeach ($con->query($sql) as $c) {\n    echo '<p>' . htmlspecialchars($c['nombre'], ENT_QUOTES, 'UTF-8') . '</p>';\n}",
+    opciones: [
+      { texto: "XSS, porque falta textContent.", explicacion: "La salida ya está codificada con htmlspecialchars: el XSS está cubierto." },
+      { texto: "Ninguna: htmlspecialchars protege todo.", explicacion: "htmlspecialchars protege lo que se muestra, no la consulta." },
+      { texto: "Inyección SQL: la consulta sigue concatenando $ciudad.", explicacion: "Cada ataque tiene su defensa: consulta preparada para SQL, codificar la salida para XSS (módulos 5 y 6)." },
+      { texto: "Fijación de sesión.", explicacion: "No se toca la sesión." }
+    ],
+    correcta: 2
+  },
+  {
+    pregunta: "Este login ya usa consulta preparada. ¿Qué problema sigue teniendo?",
+    codigo: "$stmt = $con->prepare(\"SELECT id FROM usuarios WHERE usuario = ? AND clave = ?\");\n$stmt->bind_param(\"ss\", $usuario, $clave);\n$stmt->execute();\n// en la tabla, la columna clave tiene las contraseñas tal cual",
+    opciones: [
+      { texto: "Inyección SQL.", explicacion: "Usa consulta preparada con bind_param." },
+      { texto: "Las contraseñas están en texto plano: si se filtra la base, se leen todas.", explicacion: "Habría que guardar password_hash y comparar con password_verify (módulos 2 y 6)." },
+      { texto: "XSS.", explicacion: "No se muestra nada en la página." },
+      { texto: "Ninguno.", explicacion: "Guardar las claves tal cual es un problema aparte." }
+    ],
+    correcta: 1
   }
 ];
