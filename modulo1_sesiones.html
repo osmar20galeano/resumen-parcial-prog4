@@ -1,0 +1,426 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Módulo 1 · Variables de sesión</title>
+<link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+<header>
+  <div class="etiqueta">Programación · Seguridad informática · Módulo 1</div>
+  <h1>Variables de sesión</h1>
+  <p>Cómo PHP recuerda quién inició sesión, por qué cada página privada tiene que comprobarlo en el servidor y cómo se cierra una sesión de verdad.</p>
+  <div class="chips">
+    <span class="chip">Informe 1 de 5</span>
+    <span class="chip">Materiales de Construcción (empresa ficticia)</span>
+    <span class="chip">PHP · sesiones</span>
+    <span class="chip">Examen: 18 preguntas</span>
+  </div>
+</header>
+
+<div class="disposicion">
+  <nav class="indice" aria-label="Contenido">
+    <strong>CONTENIDO</strong>
+    <a href="#esencial">01 · Lo esencial</a>
+    <a href="#conceptos">02 · Conceptos</a>
+    <a href="#caso">03 · El caso del grupo</a>
+    <a href="#medidas">04 · Medidas de protección</a>
+    <a href="#codigo">05 · El código explicado</a>
+    <a href="#ejemplos">06 · Ejemplos paso a paso</a>
+    <a href="#pruebas">07 · Pruebas y resultados</a>
+    <a href="#trampas">08 · Trampas de examen</a>
+    <a href="#preguntas">09 · Preguntas probables</a>
+    <a href="#glosario">10 · Glosario</a>
+    <a href="#practica">11 · Examen de práctica</a>
+    <button type="button" class="boton-imprimir">Imprimir o guardar PDF</button>
+    <a class="volver" href="index.html">Volver al inicio</a>
+  </nav>
+
+  <main>
+    <!-- 01 Lo esencial -->
+    <section id="esencial">
+      <span class="numero">01 / EN 1 MINUTO</span>
+      <h2>Lo esencial</h2>
+      <ol class="esencial">
+        <li>HTTP no tiene estado: cada pedido llega solo. La <strong>sesión</strong> hace que el servidor reconozca al mismo usuario entre una página y otra.</li>
+        <li>Los datos de la sesión (<code>$_SESSION</code>) se guardan <strong>en el servidor</strong>. El navegador solo guarda el <strong>identificador</strong>, en la cookie <code>PHPSESSID</code>.</li>
+        <li>Cada página privada empieza con <code>session_start()</code> y comprueba <code>isset($_SESSION["usuario"])</code>. Si no existe, <code>header("Location: index.php")</code> y <strong><code>exit</code></strong>.</li>
+        <li>El <code>exit</code> es obligatorio: <code>header()</code> solo manda una cabecera y el script sigue. Sin <code>exit</code>, el HTML privado igual viaja en la respuesta.</li>
+        <li>Después de un login correcto, <code>session_regenerate_id(true)</code> cambia el identificador y borra el viejo. Protege contra la <strong>fijación de sesión</strong>.</li>
+        <li>Un cierre de sesión completo tiene tres pasos: <code>$_SESSION = array()</code>, borrar la cookie con <code>setcookie</code> y una fecha pasada, y <code>session_destroy()</code>.</li>
+        <li>Las cabeceras anti-caché (<code>Cache-Control: no-store</code>…) evitan que el botón “atrás” muestre el panel guardado después de cerrar sesión.</li>
+      </ol>
+    </section>
+
+    <!-- 02 Conceptos -->
+    <section id="conceptos">
+      <span class="numero">02 / TEORÍA</span>
+      <h2>Conceptos</h2>
+
+      <h3>1. Qué es una sesión</h3>
+      <p>HTTP no recuerda nada: cada página que pedís llega sola al servidor. La sesión sirve para que el servidor sepa que sos el mismo usuario que inició sesión.</p>
+      <div class="ejemplo"><b class="titulo">Comparación</b>Es como la pulsera de un evento. En la entrada te piden el documento (el login) y te ponen una pulsera con un número. Adentro solo miran la pulsera.</div>
+
+      <h3>2. $_SESSION y la cookie PHPSESSID</h3>
+      <p><code>$_SESSION</code> es donde PHP guarda los datos del usuario. Esos datos quedan en el servidor. El navegador solo guarda el número de la sesión en una cookie (un dato chico que guarda el navegador) llamada <code>PHPSESSID</code>. La diferencia: la cookie vive en el navegador y solo lleva el identificador; los datos de la sesión viven en el servidor.</p>
+<pre><code>// en el servidor:   $_SESSION["usuario"] = "vendedor1";
+// en el navegador:  PHPSESSID = 8f3k2a...  (solo el número)</code></pre>
+
+      <h3>3. Validar la sesión en cada página privada</h3>
+      <p>Cada página privada tiene que preguntar si hay sesión. Si no hay, manda al login. El <code>exit</code> es obligatorio: <code>header()</code> no frena el programa, y sin <code>exit</code> el panel se envía igual.</p>
+<pre><code>session_start();
+if (!isset($_SESSION["usuario"])) {
+    header("Location: index.php");
+    exit;
+}</code></pre>
+
+      <h3>4. session_regenerate_id(true) y la fijación de sesión</h3>
+      <p>En la fijación de sesión, el atacante hace que la víctima use un número de sesión que él ya conoce. Cuando la víctima inicia sesión, el atacante entra con ese número. <code>session_regenerate_id(true)</code> cambia el número al iniciar sesión y borra el viejo.</p>
+      <div class="ejemplo"><b class="titulo">Situación</b>Es como cambiarte la pulsera al pasar al sector VIP y romper la vieja. Si alguien copió el número viejo, ya no le sirve.</div>
+
+      <h3>5. Cerrar sesión bien</h3>
+      <p>Un cierre de sesión completo tiene tres líneas. <code>session_destroy()</code> sola no alcanza: no borra la cookie.</p>
+<pre><code>$_SESSION = array();                          // vacía los datos
+setcookie(session_name(), "", time() - 42000); // borra la cookie (fecha pasada)
+session_destroy();                             // borra la sesión del servidor</code></pre>
+
+      <h3>6. Cabeceras anti-caché y el botón “atrás”</h3>
+      <p>El navegador guarda copias de las páginas. Después de cerrar sesión, “atrás” puede mostrar la copia del panel. Estas cabeceras (instrucciones que el servidor manda con la página) le dicen que no guarde copias.</p>
+<pre><code>header("Cache-Control: no-store, no-cache, must-revalidate");
+header("Pragma: no-cache");
+header("Expires: 0");</code></pre>
+
+      <div class="nota"><strong>Herramientas del TP.</strong> En Firefox, F12 → Almacenamiento → Cookies muestra la cookie <code>PHPSESSID</code>: cambia al iniciar sesión y desaparece al cerrarla. En la terminal, <code>curl -i http://localhost/tp/login_protegido/menu.php</code> pide el panel sin sesión: la vulnerable responde <code>200</code> con el panel, y la protegida, <code>302</code> (redirección) al login. <code>-i</code> muestra las cabeceras de la respuesta (por ejemplo el <code>302</code> y el <code>Location</code>) y curl no sigue la redirección salvo que se use <code>-L</code>.</div>
+    </section>
+
+    <!-- 03 El caso -->
+    <section id="caso">
+      <span class="numero">03 / EL INFORME</span>
+      <h2>El caso del grupo</h2>
+      <div class="tabla-contenedor">
+        <table>
+          <tbody>
+            <tr><td><strong>Empresa</strong></td><td>Materiales de Construcción (empresa ficticia). Vende materiales de construcción.</td></tr>
+            <tr><td><strong>Usuarios</strong></td><td>Administración y ventas/depósito, que entran a un panel privado.</td></tr>
+            <tr><td><strong>Sistema</strong></td><td>PHP: <code>index.php</code> (login), <code>php/acceso.php</code>, <code>menu.php</code> (panel), <code>php/logout.php</code>. Dos carpetas: <code>login_vulnerable</code> y <code>login_protegido</code>. El login envía los datos con <code>fetch</code>; <code>acceso.php</code> responde <code>OK</code> y el JavaScript abre <code>menu.php</code>.</td></tr>
+            <tr><td><strong>Qué fallaba</strong></td><td><code>menu.php</code> no comprobaba la sesión, el login no regeneraba el ID y el cierre de sesión solo redirigía. Se entraba escribiendo la URL y se volvía al panel con “atrás”.</td></tr>
+            <tr><td><strong>Riesgo</strong></td><td>Otra persona puede ver el panel privado, sobre todo en una computadora compartida.</td></tr>
+          </tbody>
+        </table>
+      </div>
+    </section>
+
+    <!-- 04 Medidas -->
+    <section id="medidas">
+      <span class="numero">04 / PROTECCIÓN</span>
+      <h2>Las medidas de protección</h2>
+      <div class="tabla-contenedor">
+        <table>
+          <thead><tr><th>Medida</th><th>Contra qué protege</th><th>Archivo</th></tr></thead>
+          <tbody>
+            <tr><td>Validar la sesión (<code>isset</code> + <code>header</code> + <code>exit</code>)</td><td>Entrar por URL sin login.</td><td><code>menu.php</code></td></tr>
+            <tr><td>Guardar el usuario en <code>$_SESSION</code></td><td>Sin esto no hay nada que validar (las dos versiones lo hacen).</td><td><code>php/acceso.php</code></td></tr>
+            <tr><td><code>session_regenerate_id(true)</code></td><td>Fijación de sesión.</td><td><code>php/acceso.php</code></td></tr>
+            <tr><td>Cierre completo (3 líneas)</td><td>Que la sesión siga viva después de salir.</td><td><code>php/logout.php</code></td></tr>
+            <tr><td>Cabeceras anti-caché</td><td>Ver el panel con “atrás”.</td><td><code>menu.php</code></td></tr>
+          </tbody>
+        </table>
+      </div>
+    </section>
+
+    <!-- 05 Código -->
+    <section id="codigo">
+      <span class="numero">05 / CÓDIGO</span>
+      <h2>El código explicado</h2>
+      <p>Código real del proyecto del grupo (carpetas <code>login_vulnerable</code> y <code>login_protegido</code>). Se muestran solo las partes de la sesión; la conexión a la base no se incluye.</p>
+
+      <h3>1. El panel: menu.php</h3>
+      <div class="comparacion">
+        <div class="version"><span class="franja">Vulnerable</span>
+<pre><code>//VULNERABLE: se lee la sesion pero NO se valida si el usuario inicio sesion.
+//Cualquiera que escriba la URL menu.php ve el panel.
+session_start();
+$usuario=$_SESSION["usuario"] ?? "desconocido";
+$tipo=$_SESSION["tipo"] ?? "desconocido";
+?&gt;
+...
+&lt;p class="dato"&gt;&lt;span class="clave"&gt;usuario:&lt;/span&gt; &lt;span class="valor"&gt;&lt;?php echo $usuario; ?&gt;&lt;/span&gt;&lt;/p&gt;</code></pre>
+          <p>Abre la sesión y lee los datos, pero no comprueba nada: cualquiera que escriba la URL ve el panel, con usuario “desconocido”.</p>
+        </div>
+        <div class="version protegido"><span class="franja">Protegido</span>
+<pre><code>session_start();
+//PROTECCION: se valida la sesion en el servidor antes de mostrar cualquier HTML
+if(!isset($_SESSION["usuario"])){
+    header("Location: index.php");
+    exit;
+}
+//PROTECCION: cabeceras no-cache para que el boton "atras" no muestre el panel despues del logout
+header("Cache-Control: no-store, no-cache, must-revalidate");
+header("Pragma: no-cache");
+header("Expires: 0");
+$usuario=$_SESSION["usuario"] ?? "desconocido";
+$tipo=$_SESSION["tipo"] ?? "desconocido";</code></pre>
+          <p>Sin sesión, redirige al login y no envía el panel.</p>
+        </div>
+      </div>
+
+      <h3>2. El login correcto: php/acceso.php</h3>
+      <div class="comparacion">
+        <div class="version"><span class="franja">Vulnerable</span>
+<pre><code>}else if($clave==$fila["usu_clave"]){
+    //guardamos los datos del usuario en la sesion (sin session_regenerate_id)
+    $_SESSION["usuario"]=$fila["usu_nombre"];
+    $_SESSION["tipo"]=$fila["usu_tipo"];
+    echo"OK";//OK con mayusculas
+}else{
+    echo "CONTRASEÑA INCORRECTA";
+}</code></pre>
+          <p>Guarda los datos en la sesión, pero con el mismo ID que tenía antes del login: queda expuesto a fijación de sesión.</p>
+        </div>
+        <div class="version protegido"><span class="franja">Protegido</span>
+<pre><code>}else if($clave==$fila["usu_clave"]){
+    //PROTECCION: nuevo ID de sesion al autenticar (true borra la sesion vieja del servidor)
+    session_regenerate_id(true);
+    //guardamos los datos del usuario en la sesion
+    $_SESSION["usuario"]=$fila["usu_nombre"];
+    $_SESSION["tipo"]=$fila["usu_tipo"];
+    echo"OK";//OK con mayusculas
+}else{
+    echo "CONTRASEÑA INCORRECTA";
+}</code></pre>
+          <p>Nuevo identificador y datos del usuario guardados en el servidor.</p>
+        </div>
+      </div>
+
+      <h3>3. El cierre de sesión: php/logout.php</h3>
+      <div class="comparacion">
+        <div class="version"><span class="franja">Vulnerable</span>
+<pre><code>//VULNERABLE: el "cierre de sesion" solo redirige al login.
+//No se vacia $_SESSION, no se borra la cookie y no se destruye la sesion en el servidor.
+header("Location: ../index.php");
+exit;</code></pre>
+          <p>La sesión sigue viva en el servidor y la cookie sigue en el navegador.</p>
+        </div>
+        <div class="version protegido"><span class="franja">Protegido</span>
+<pre><code>session_start();
+//PROTECCION: se vacian todas las variables de sesion
+$_SESSION=array();
+//PROTECCION: se borra la cookie de sesion del navegador
+$parametros=session_get_cookie_params();
+setcookie(session_name(), "", time()-42000,
+    $parametros["path"], $parametros["domain"],
+    $parametros["secure"], $parametros["httponly"]
+);
+//PROTECCION: se destruye la sesion en el servidor
+session_destroy();
+header("Location: ../index.php");
+exit;</code></pre>
+          <p>Es el mismo esquema que recomienda el manual de PHP en <code>session_destroy</code>.</p>
+        </div>
+      </div>
+
+      <h3>Línea por línea</h3>
+      <div class="tabla-contenedor">
+        <table class="tabla-lineas">
+          <thead><tr><th>Línea</th><th>Qué hace</th><th>Por qué importa</th><th>Qué pasa si se quita</th></tr></thead>
+          <tbody>
+            <tr><td><code>session_start();</code> (menu.php)</td><td>Reanuda la sesión con el ID que manda el navegador y llena <code>$_SESSION</code>.</td><td>Sin esto <code>$_SESSION</code> está vacío y no se puede saber quién es.</td><td><code>isset</code> siempre da falso: hasta el usuario legítimo es expulsado al login.</td></tr>
+            <tr><td><code>$usuario=$_SESSION["usuario"] ?? "desconocido";</code></td><td>Lee el usuario; si no existe, usa “desconocido”.</td><td>Solo evita un aviso de PHP; no protege nada.</td><td>En la vulnerable es lo único que hay: por eso el panel se muestra con “desconocido”.</td></tr>
+            <tr><td><code>if(!isset($_SESSION["usuario"]))</code></td><td>Pregunta si NO existe la variable de sesión.</td><td>Es el control de acceso propiamente dicho.</td><td>El panel queda abierto por URL directa (la falla de la versión vulnerable).</td></tr>
+            <tr><td><code>header("Location: index.php");</code></td><td>Agrega la cabecera de redirección (código 302).</td><td>Lleva al visitante sin sesión al login.</td><td>Con el <code>exit</code> solo, el visitante ve una página en blanco: está protegido, pero sin aviso.</td></tr>
+            <tr><td><code>exit;</code></td><td>Corta el script.</td><td><code>header()</code> no detiene la ejecución.</td><td>El navegador redirige, pero el HTML privado viaja igual en la respuesta; con curl se lee entero.</td></tr>
+            <tr><td><code>header("Cache-Control: no-store, ...")</code></td><td>Prohíbe guardar la página en caché.</td><td>Después del logout, “atrás” no puede mostrar la copia.</td><td>“Atrás” puede mostrar el panel viejo desde el navegador.</td></tr>
+            <tr><td><code>header("Pragma: no-cache")</code> y <code>header("Expires: 0")</code></td><td>Lo mismo para clientes antiguos; marca la página como vencida.</td><td>Compatibilidad.</td><td>Poco cambio en navegadores modernos si está <code>Cache-Control</code>.</td></tr>
+            <tr><td><code>session_regenerate_id(true);</code></td><td>Crea un ID nuevo y borra el viejo del servidor.</td><td>Un ID conocido antes del login deja de servir.</td><td>Queda expuesto a fijación de sesión. Con <code>false</code> (o sin argumento) el ID nuevo se crea, pero la sesión vieja no se borra.</td></tr>
+            <tr><td><code>$_SESSION["usuario"]=...</code></td><td>Guarda el nombre del usuario en la sesión.</td><td>Es lo que después comprueba <code>menu.php</code>.</td><td>Nadie puede entrar al panel, ni con la contraseña correcta.</td></tr>
+            <tr><td><code>$_SESSION["tipo"]=...</code></td><td>Guarda el rol (administrador, etc.).</td><td>Permite mostrar opciones según el rol.</td><td>No se puede distinguir el tipo de usuario.</td></tr>
+            <tr><td><code>session_start();</code> (logout.php)</td><td>Abre la sesión actual.</td><td>Hace falta para poder destruirla.</td><td><code>session_destroy()</code> falla porque no hay sesión activa.</td></tr>
+            <tr><td><code>$_SESSION=array();</code></td><td>Vacía todas las variables de sesión.</td><td><code>session_destroy()</code> no vacía el arreglo del script actual.</td><td>Los datos siguen en <code>$_SESSION</code> hasta que termina el script.</td></tr>
+            <tr><td><code>session_get_cookie_params()</code></td><td>Lee ruta, dominio, <code>secure</code> y <code>httponly</code> de la cookie.</td><td>Para borrar una cookie hay que mandarla con los mismos parámetros.</td><td>El borrado puede no coincidir con la cookie real y no borrarse.</td></tr>
+            <tr><td><code>setcookie(session_name(), "", time()-42000, ...)</code></td><td>Envía la cookie vacía con fecha vencida.</td><td>El navegador la elimina.</td><td>El navegador sigue mandando el ID viejo (aunque ya no sirva si se destruyó la sesión).</td></tr>
+            <tr><td><code>session_destroy();</code></td><td>Elimina los datos de la sesión en el servidor.</td><td>Es lo que realmente invalida la sesión.</td><td>Quien tenga el ID (por ejemplo, una copia de la cookie) puede seguir usando la sesión.</td></tr>
+            <tr><td><code>header("Location: ../index.php"); exit;</code></td><td>Vuelve al login y corta.</td><td>Termina el flujo de cierre.</td><td>El usuario queda en una página en blanco.</td></tr>
+          </tbody>
+        </table>
+      </div>
+      <div class="nota">Las dos versiones de <code>menu.php</code> empiezan con un control de <code>$_SERVER["PATH_INFO"]</code>: si la URL trae algo después de <code>.php</code> (por ejemplo <code>menu.php/algo</code>), redirige a la dirección limpia. No es parte de la protección de sesión.</div>
+      <div class="ojo"><strong>Ojo (lo que muestra el código y el informe no dice):</strong> la versión vulnerable <strong>sí</strong> crea las variables de sesión; el informe dice que “no existe variable de sesión”. Lo que falla es que <code>menu.php</code> no las valida, que no se regenera el ID y que el logout no cierra nada. Además, las dos versiones comparan la contraseña en texto plano (<code>$clave==$fila["usu_clave"]</code>, ver <a href="modulo2_contrasenas.html">módulo 2</a>) y <code>menu.php</code> muestra <code>$usuario</code> sin <code>htmlspecialchars</code> (ver <a href="modulo5_xss.html">módulo 5</a>).</div>
+      <div class="ojo"><strong>Ojo:</strong> el informe dice que <code>session_regenerate_id(true)</code> impide usar un ID “predecible o robado”. Es correcto para un ID conocido <strong>antes</strong> del login (fijación). Si alguien roba el ID <strong>después</strong> del login (secuestro de sesión), regenerar al entrar no alcanza: para eso están <code>HttpOnly</code>, HTTPS con <code>Secure</code>, el vencimiento por inactividad y el cierre de sesión.</div>
+    </section>
+
+    <!-- 06 Ejemplos -->
+    <section id="ejemplos">
+      <span class="numero">06 / ESCENARIOS</span>
+      <h2>Ejemplos paso a paso</h2>
+
+      <div class="escenario">
+        <h3>1. Acceso directo por URL sin iniciar sesión</h3>
+        <p class="accion"><strong>Acción:</strong> alguien que conoce el nombre del archivo escribe <code>localhost/tp/.../menu.php</code> sin pasar por el login.</p>
+        <div class="comparacion">
+          <div class="version"><span class="franja">Vulnerable</span><p>Se muestra el panel, con usuario “desconocido”. Es la prueba principal que el grupo comprobó.</p></div>
+          <div class="version protegido"><span class="franja">Protegido</span><p><code>isset</code> no encuentra <code>$_SESSION["usuario"]</code>, redirige a <code>index.php</code> y <code>exit</code> corta el script.</p></div>
+        </div>
+      </div>
+
+      <div class="escenario">
+        <h3>2. Cerrar sesión y tocar “atrás”</h3>
+        <p class="accion"><strong>Acción:</strong> el usuario entra al panel, cierra sesión y aprieta el botón “atrás” del navegador (después, “adelante”).</p>
+        <div class="comparacion">
+          <div class="version"><span class="franja">Vulnerable</span><p>Vuelve al panel: el logout solo redirigió, la sesión sigue viva y, además, <code>menu.php</code> no valida nada.</p></div>
+          <div class="version protegido"><span class="franja">Protegido</span><p>La sesión fue destruida y la página no quedó en caché: el navegador la vuelve a pedir, la validación falla y vuelve al login.</p></div>
+        </div>
+      </div>
+
+      <div class="escenario">
+        <h3>3. Equipo compartido: otra persona usa el navegador después del logout</h3>
+        <p class="accion"><strong>Acción:</strong> el vendedor cierra sesión y se va. Un compañero abre el historial y entra a <code>menu.php</code>.</p>
+        <div class="comparacion">
+          <div class="version"><span class="franja">Vulnerable</span><p>Entra al panel con los datos internos.</p></div>
+          <div class="version protegido"><span class="franja">Protegido</span><p>La cookie se borró y la sesión del servidor ya no existe: redirige al login.</p></div>
+        </div>
+      </div>
+
+      <div class="escenario">
+        <h3>4. Fijación de sesión</h3>
+        <p class="accion"><strong>Acción:</strong> el atacante entra al login, anota su <code>PHPSESSID</code> y logra que la víctima use ese mismo identificador; la víctima inicia sesión.</p>
+        <div class="comparacion">
+          <div class="version"><span class="franja">Sin regenerar el ID</span><p>Después del login el ID sigue igual. El atacante pone ese ID en su navegador y entra como la víctima.</p></div>
+          <div class="version protegido"><span class="franja">Protegido</span><p><code>session_regenerate_id(true)</code> da un ID nuevo a la víctima y borra el viejo. El ID del atacante no sirve.</p></div>
+        </div>
+      </div>
+
+      <div class="escenario">
+        <h3>5. Se olvidaron el exit</h3>
+        <p class="accion"><strong>Acción:</strong> en <code>menu.php</code> está el <code>header("Location: ...")</code> pero falta el <code>exit</code>. Alguien ejecuta <code>curl -i .../menu.php</code>.</p>
+        <div class="comparacion">
+          <div class="version"><span class="franja">Sin exit</span><p>La respuesta tiene <code>302</code> y <code>Location</code>, pero en el cuerpo viene el HTML del panel. En el navegador “parece” protegido porque redirige rápido.</p></div>
+          <div class="version protegido"><span class="franja">Con exit</span><p><code>302</code> con el cuerpo vacío. No sale nada del panel.</p></div>
+        </div>
+      </div>
+
+      <div class="escenario">
+        <h3>6. Login legítimo</h3>
+        <p class="accion"><strong>Acción:</strong> un empleado ingresa usuario y contraseña correctos.</p>
+        <div class="comparacion">
+          <div class="version"><span class="franja">Vulnerable</span><p>Entra al panel; se guardan nombre y tipo en <code>$_SESSION</code>, pero sin regenerar el ID.</p></div>
+          <div class="version protegido"><span class="franja">Protegido</span><p>Se verifica en la base, se regenera el ID, se guardan nombre y tipo en <code>$_SESSION</code> y entra. La protección no impide el uso correcto.</p></div>
+        </div>
+      </div>
+    </section>
+
+    <!-- 07 Pruebas -->
+    <section id="pruebas">
+      <span class="numero">07 / EVIDENCIAS</span>
+      <h2>Pruebas y resultados</h2>
+      <p>Matriz del grupo, resumida. Se copia lo que dice el informe, sin agregar resultados.</p>
+      <div class="tabla-contenedor">
+        <table>
+          <thead><tr><th>Prueba</th><th>Versión vulnerable</th><th>Versión protegida</th></tr></thead>
+          <tbody>
+            <tr><td>Login con credenciales válidas</td><td>Se evalúa el acceso con credenciales válidas.</td><td>Verifica que el usuario exista en la base y que la contraseña coincida antes de permitir el acceso.</td></tr>
+            <tr><td>Usuario inexistente</td><td>Se comprueba si lo rechaza.</td><td>Muestra que el usuario no fue encontrado.</td></tr>
+            <tr><td>Contraseña incorrecta</td><td>Se comprueba si la rechaza.</td><td>Muestra “contraseña incorrecta” y no deja entrar.</td></tr>
+            <tr><td>Validación de datos ingresados</td><td>Se evalúa ante formatos o caracteres no permitidos.</td><td>Se comprueban las validaciones implementadas.</td></tr>
+            <tr><td>Tipo de usuario</td><td>Se verifica el reconocimiento del tipo de cuenta.</td><td>Guarda nombre y tipo en la sesión después de autenticar.</td></tr>
+            <tr><td><strong>Acceso directo a menu.php sin sesión</strong></td><td><strong>Se pudo entrar modificando la URL.</strong></td><td><strong>Redirige al formulario de inicio de sesión.</strong></td></tr>
+            <tr><td>Cierre de sesión</td><td>Se evalúa si finaliza la sesión.</td><td>Borra las variables, vence la cookie y destruye la sesión.</td></tr>
+            <tr><td>Acceso después de cerrar sesión</td><td>Se comprueba si se puede volver por URL.</td><td>“Se espera” que impida el acceso.</td></tr>
+          </tbody>
+        </table>
+      </div>
+      <h3>Qué se demostró</h3>
+      <ul>
+        <li><strong>Comprobado y documentado en la matriz y la conclusión:</strong> la versión vulnerable deja entrar a <code>menu.php</code> por URL; la protegida redirige al login.</li>
+        <li><strong>Mostrado en las capturas:</strong> en la vulnerable, con “atrás” y “adelante” se vuelve al panel; en la protegida, después de cerrar sesión, “atrás” ya no entra al menú.</li>
+        <li>Evidencias: capturas, la matriz y los fragmentos de código. Como instrumentos también se nombran las herramientas de desarrollo de Firefox y curl.</li>
+      </ul>
+      <div class="ojo"><strong>Ojo (informe incompleto):</strong> la consigna pide distinguir el resultado <strong>esperado</strong> del <strong>observado</strong>. En la matriz, casi toda la columna “vulnerable” dice qué se evalúa, no qué pasó, y la fila “acceso después de cerrar sesión” dice “se espera”. Además quedaron frases del modelo sin completar (“Las demás pruebas deben registrarse según los resultados realmente observados…”, “Resultados obtenidos: describir…”). En una matriz correcta cada celda dice lo que se vio, por ejemplo: “Se mostró el panel” / “Redirigió a index.php (302)”.</div>
+      <div class="ojo"><strong>Ojo (buena práctica):</strong> las dos versiones responden “USUARIO NO ENCONTRADO” o “CONTRASEÑA INCORRECTA” según el caso. Eso le dice a un atacante qué usuarios existen (enumeración de usuarios). OWASP recomienda un mensaje genérico: “Usuario o contraseña incorrectos”.</div>
+    </section>
+
+    <!-- 08 Trampas -->
+    <section id="trampas">
+      <span class="numero">08 / CUIDADO</span>
+      <h2>Trampas de examen</h2>
+      <div class="tabla-contenedor">
+        <table>
+          <thead><tr><th>Lo que parece</th><th>Lo correcto</th></tr></thead>
+          <tbody>
+            <tr><td>“La cookie PHPSESSID guarda el usuario y la contraseña.”</td><td>Guarda solo el identificador. Los datos están en el servidor.</td></tr>
+            <tr><td>“<code>header("Location: ...")</code> corta la ejecución.”</td><td>No. Solo agrega una cabecera; sin <code>exit</code> el script sigue y manda el HTML.</td></tr>
+            <tr><td>“Con <code>session_destroy()</code> alcanza para cerrar sesión.”</td><td>No borra la cookie ni vacía <code>$_SESSION</code> del script actual. Van los tres pasos.</td></tr>
+            <tr><td>“<code>session_regenerate_id()</code> se usa al cerrar sesión.”</td><td>Se usa al <strong>iniciar</strong> sesión (cambio de privilegio). Al cerrar se destruye la sesión.</td></tr>
+            <tr><td>“<code>session_regenerate_id(true)</code> borra los datos del usuario.”</td><td>Conserva <code>$_SESSION</code>; lo que borra es la sesión vieja (el ID anterior).</td></tr>
+            <tr><td>“Con validar en el login alcanza.”</td><td>Cada página privada tiene que validar, porque cada pedido HTTP es independiente.</td></tr>
+            <tr><td>“Si escondo el enlace al panel, nadie entra.”</td><td>Se entra escribiendo la URL. La defensa está en el servidor.</td></tr>
+            <tr><td>“Las cabeceras no-cache protegen el acceso.”</td><td>Evitan ver la copia guardada. El acceso lo protege la validación de sesión.</td></tr>
+            <tr><td>“Cookie y sesión son lo mismo.”</td><td>La cookie está en el navegador; la sesión, en el servidor, y usa una cookie para el ID.</td></tr>
+            <tr><td>“<code>time()-42000</code> es un tiempo de espera.”</td><td>Es una fecha en el pasado (unas 11 horas y media atrás) para que la cookie venza ya.</td></tr>
+          </tbody>
+        </table>
+      </div>
+    </section>
+
+    <!-- 09 Preguntas probables -->
+    <section id="preguntas">
+      <span class="numero">09 / REPASO</span>
+      <h2>Preguntas probables</h2>
+      <p class="chico">Tocá cada pregunta para ver la respuesta.</p>
+      <details><summary>¿Por qué HTTP necesita sesiones?</summary><p>Porque no tiene estado: cada pedido es independiente y el servidor no recuerda quién inició sesión. La sesión guarda los datos en el servidor y le da al navegador un identificador.</p></details>
+      <details><summary>¿Qué guarda la cookie PHPSESSID?</summary><p>Solo el identificador de la sesión. Los datos (<code>$_SESSION</code>) quedan en el servidor.</p></details>
+      <details><summary>¿Qué hace session_start()?</summary><p>Crea una sesión nueva o reanuda la existente según el identificador que manda el navegador. Va antes de cualquier HTML.</p></details>
+      <details><summary>¿Cómo se valida una página privada?</summary><p><code>session_start()</code>; si <code>!isset($_SESSION["usuario"])</code>, <code>header("Location: index.php")</code> y <code>exit</code>.</p></details>
+      <details><summary>¿Por qué hace falta el exit después del header?</summary><p>Porque <code>header()</code> no detiene el script. Sin <code>exit</code>, el HTML privado se manda igual en la respuesta.</p></details>
+      <details><summary>¿Qué es la fijación de sesión y cómo se evita?</summary><p>El atacante hace que la víctima inicie sesión con un ID que él conoce. Se evita con <code>session_regenerate_id(true)</code> después de autenticar.</p></details>
+      <details><summary>¿Qué significa el true de session_regenerate_id(true)?</summary><p>Que además de crear el ID nuevo, borra la sesión vieja del servidor.</p></details>
+      <details><summary>¿Cuáles son los pasos de un cierre de sesión completo?</summary><p><code>session_start()</code>, <code>$_SESSION = array()</code>, <code>setcookie</code> con fecha pasada y <code>session_destroy()</code>; después redirigir y <code>exit</code>.</p></details>
+      <details><summary>¿Para qué sirven las cabeceras anti-caché?</summary><p>Para que el navegador no guarde el panel y “atrás” no lo muestre después del logout.</p></details>
+      <details><summary>¿Qué se demostró con la prueba principal?</summary><p>Que en la vulnerable se entra a <code>menu.php</code> escribiendo la URL y en la protegida redirige al login.</p></details>
+      <details><summary>¿Para qué usaron curl y las herramientas de Firefox?</summary><p>curl, para pedir páginas sin sesión y ver la respuesta real del servidor (200 o 302). Firefox, para ver la cookie PHPSESSID, si cambia al iniciar sesión y si se borra al cerrar.</p></details>
+    </section>
+
+    <!-- 10 Glosario -->
+    <section id="glosario">
+      <span class="numero">10 / TÉRMINOS</span>
+      <h2>Glosario</h2>
+      <dl class="glosario">
+        <dt>HTTP sin estado</dt><dd>Cada pedido es independiente; el servidor no recuerda los anteriores.</dd>
+        <dt>Sesión</dt><dd>Datos de un usuario guardados en el servidor mientras navega, asociados a un identificador.</dd>
+        <dt>Identificador de sesión (ID)</dt><dd>Cadena aleatoria que relaciona al navegador con su sesión en el servidor.</dd>
+        <dt>PHPSESSID</dt><dd>Nombre por defecto de la cookie donde PHP guarda el identificador.</dd>
+        <dt>Cookie</dt><dd>Dato pequeño que el servidor pide guardar al navegador, que lo reenvía en cada pedido.</dd>
+        <dt>$_SESSION</dt><dd>Arreglo superglobal de PHP con las variables de sesión.</dd>
+        <dt>session_start()</dt><dd>Crea o reanuda la sesión.</dd>
+        <dt>session_regenerate_id(true)</dt><dd>Cambia el identificador y borra la sesión vieja.</dd>
+        <dt>session_destroy()</dt><dd>Elimina los datos de la sesión en el servidor.</dd>
+        <dt>session_get_cookie_params()</dt><dd>Devuelve los parámetros de la cookie de sesión (ruta, dominio, secure, httponly).</dd>
+        <dt>setcookie()</dt><dd>Envía una cookie; con fecha pasada, la borra.</dd>
+        <dt>header("Location: ...")</dt><dd>Cabecera de redirección (302). No detiene el script.</dd>
+        <dt>exit</dt><dd>Termina la ejecución del script.</dd>
+        <dt>Fijación de sesión</dt><dd>El atacante hace usar a la víctima un ID que él conoce y lo aprovecha después del login (CWE-384).</dd>
+        <dt>Secuestro de sesión</dt><dd>El atacante roba un ID ya autenticado y lo usa.</dd>
+        <dt>Acceso directo por URL (forced browsing)</dt><dd>Entrar a una página privada escribiendo su dirección.</dd>
+        <dt>Cache-Control: no-store</dt><dd>Cabecera que prohíbe guardar la respuesta en caché.</dd>
+        <dt>HttpOnly / Secure / SameSite</dt><dd>Marcas de la cookie: no la lee JavaScript / solo por HTTPS / limita su envío desde otros sitios.</dd>
+        <dt>curl</dt><dd>Programa de terminal para hacer pedidos HTTP; <code>-i</code> muestra cabeceras, <code>-b</code> envía cookies.</dd>
+        <dt>Matriz comparativa</dt><dd>Tabla con cada caso de prueba y el resultado en cada versión.</dd>
+        <dt>Lista de cotejo</dt><dd>Lista de comportamientos esperados que se marcan como cumplidos o no.</dd>
+      </dl>
+    </section>
+
+    <!-- 11 Examen -->
+    <section id="practica">
+      <span class="numero">11 / PRÁCTICA</span>
+      <h2>Examen de práctica</h2>
+      <p>Elegí una opción en cada pregunta. Se bloquea la pregunta y se muestra la explicación. “Volver a empezar” mezcla preguntas y opciones.</p>
+      <div id="examen" data-banco="preguntas1"><p class="chico">El examen necesita JavaScript activado.</p></div>
+    </section>
+  </main>
+</div>
+
+<footer>Programación IV · Módulo 1: variables de sesión · Fuentes: informe del grupo, consigna del TP, manual de PHP y OWASP</footer>
+<script src="js/preguntas1.js"></script>
+<script src="js/script.js"></script>
+</body>
+</html>

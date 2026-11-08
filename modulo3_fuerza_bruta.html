@@ -1,0 +1,449 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Módulo 3 · Fuerza bruta</title>
+<link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+<header>
+  <div class="etiqueta">Programación · Seguridad informática · Módulo 3</div>
+  <h1>Fuerza bruta</h1>
+  <p>Qué pasa cuando un login deja probar contraseñas sin límite, y cómo se frena con contadores, bloqueos, límite por IP y un registro de intentos.</p>
+  <div class="chips">
+    <span class="chip">Informe 3 de 5</span>
+    <span class="chip">Banco Alfa (ficticio)</span>
+    <span class="chip">PHP · MySQL</span>
+    <span class="chip">Examen: 20 preguntas</span>
+  </div>
+</header>
+
+<div class="disposicion">
+  <nav class="indice" aria-label="Contenido">
+    <strong>CONTENIDO</strong>
+    <a href="#esencial">01 · Lo esencial</a>
+    <a href="#conceptos">02 · Conceptos</a>
+    <a href="#caso">03 · El caso del grupo</a>
+    <a href="#medidas">04 · Medidas de protección</a>
+    <a href="#codigo">05 · El código explicado</a>
+    <a href="#ejemplos">06 · Ejemplos paso a paso</a>
+    <a href="#pruebas">07 · Pruebas y resultados</a>
+    <a href="#trampas">08 · Trampas de examen</a>
+    <a href="#preguntas">09 · Preguntas probables</a>
+    <a href="#glosario">10 · Glosario</a>
+    <a href="#practica">11 · Examen de práctica</a>
+    <button type="button" class="boton-imprimir">Imprimir o guardar PDF</button>
+    <a class="volver" href="index.html">Volver al inicio</a>
+  </nav>
+
+  <main>
+    <!-- 01 Lo esencial -->
+    <section id="esencial">
+      <span class="numero">01 / EN 1 MINUTO</span>
+      <h2>Lo esencial</h2>
+      <ol class="esencial">
+        <li>Fuerza bruta: probar contraseñas una tras otra, de forma automática, hasta acertar. Funciona si el login no pone límite.</li>
+        <li>La versión vulnerable de Banco Alfa: intentos ilimitados, sin bloqueo y contraseñas en texto plano.</li>
+        <li>Bloqueo escalonado por usuario: 3 fallos → 2 minutos bloqueado; 3 fallos más → bloqueo permanente, que solo libera Soporte.</li>
+        <li>Límite por IP: más de 10 fallos en 15 minutos desde la misma dirección → respuesta <code>429</code> (demasiadas peticiones).</li>
+        <li>Mensaje único y tiempo parejo: el atacante no puede saber si un usuario existe.</li>
+        <li>Login correcto → contadores en cero. Cada intento queda registrado.</li>
+        <li>La contra: un atacante puede bloquear a propósito la cuenta de otro, y el límite por IP puede afectar a toda una oficina.</li>
+      </ol>
+    </section>
+
+    <!-- 02 Conceptos -->
+    <section id="conceptos">
+      <span class="numero">02 / TEORÍA</span>
+      <h2>Conceptos</h2>
+
+      <h3>1. Qué es un ataque de fuerza bruta</h3>
+      <p>Es probar muchas contraseñas, con un programa, hasta que una funcione. Si el login no limita los intentos, tarde o temprano acierta. Hay dos variantes:</p>
+      <ul>
+        <li><strong>Diccionario:</strong> en lugar de probar todo, prueba una lista de contraseñas comunes (<code>123456</code>, <code>password</code>…).</li>
+        <li><strong>Password spraying:</strong> prueba una sola contraseña común contra muchos usuarios, para no disparar el bloqueo de ninguno.</li>
+      </ul>
+      <div class="ejemplo"><b class="titulo">Comparación</b>Es como un candado de bicicleta de 3 números: si nadie te detiene, probás 000, 001, 002… y en algún momento abre.</div>
+
+      <h3>2. Contador por usuario y bloqueo escalonado</h3>
+      <p>El sistema cuenta los fallos de cada usuario. Al tercer fallo bloquea la cuenta 2 minutos (bloqueo temporal). Si vuelve a fallar 3 veces, el bloqueo es permanente y solo lo quita el personal de Soporte.</p>
+<div class="tabla-contenedor">
+        <table>
+          <thead><tr><th>Estado de la cuenta</th><th>Cómo llega</th><th>Cómo sale</th></tr></thead>
+          <tbody>
+            <tr><td>Normal</td><td>—</td><td>—</td></tr>
+            <tr><td>Bloqueo de 2 minutos</td><td>3 fallos seguidos</td><td>Pasan los 2 minutos, o Soporte la libera</td></tr>
+            <tr><td>Bloqueo permanente</td><td>3 fallos más después del bloqueo temporal</td><td>Solo Soporte la libera</td></tr>
+          </tbody>
+        </table>
+      </div>
+      <p class="chico">Un login correcto pone todos los contadores en cero.</p>
+
+      <h3>3. Límite por IP</h3>
+      <p>La IP es la dirección de la máquina que hace el pedido. Si desde la misma IP hay más de 10 fallos en 15 minutos, el sistema responde <code>429</code> y no deja seguir. Sirve contra el password spraying, que cambia de usuario pero no de máquina.</p>
+<pre><code>if ($fallosIp &gt;= 10) {
+    http_response_code(429);   // demasiadas peticiones
+    exit;
+}</code></pre>
+
+      <h3>4. Mensaje único y tiempo parejo</h3>
+      <p>Si el login dice “el usuario no existe”, el atacante aprende qué usuarios son reales (enumeración de usuarios). Por eso hay un solo mensaje para todo: “Usuario o contraseña incorrectos”. Además, el sistema tarda lo mismo exista o no el usuario: si no existe, igual verifica un hash falso.</p>
+      <div class="ejemplo"><b class="titulo">Situación</b>Si “usuario inexistente” responde en 1 ms y “clave incorrecta” en 230 ms, el atacante descubre los usuarios mirando el reloj, aunque el mensaje sea el mismo.</div>
+
+      <h3>5. Contador en un solo UPDATE y fechas en MySQL</h3>
+      <p>Si PHP lee el contador, le suma 1 y lo guarda, dos intentos al mismo tiempo pueden leer el mismo número y perder un fallo (condición de carrera). Haciendo la suma dentro de un solo <code>UPDATE</code>, MySQL la hace de una vez. Las fechas del bloqueo también las calcula MySQL con <code>NOW()</code> (ahora) y <code>DATE_ADD</code> (sumar tiempo), así guardar y comparar usan el mismo reloj.</p>
+<pre><code>UPDATE usuarios SET asu_intentos = asu_intentos + 1 WHERE asu_nombre = ?;
+-- bloqueado hasta: DATE_ADD(NOW(), INTERVAL 2 MINUTE)  →  ahora + 2 minutos</code></pre>
+
+      <h3>6. Reinicio del contador y registro de intentos</h3>
+      <p>Cuando el login es correcto, los contadores vuelven a cero; así un usuario que se equivocó ayer no queda bloqueado hoy por un solo error. Además, cada intento se guarda en la tabla <code>log_intentos</code> (usuario, IP, resultado y fecha). Ese registro sirve para ver ataques y para contar los fallos por IP.</p>
+<pre><code>registrarIntento($con, $usuario, $ip, "fallido");</code></pre>
+    </section>
+
+    <!-- 03 El caso -->
+    <section id="caso">
+      <span class="numero">03 / EL INFORME</span>
+      <h2>El caso del grupo</h2>
+      <div class="tabla-contenedor">
+        <table>
+          <tbody>
+            <tr><td><strong>Empresa</strong></td><td>Banco Alfa (ficticio). Maneja datos personales y económicos.</td></tr>
+            <tr><td><strong>Sistema</strong></td><td>PHP, JavaScript y MySQL. El login envía los datos con <code>fetch</code> a <code>php/acceso.php</code>, que responde en JSON. Dos carpetas: <code>banco_vulnerable</code> y <code>banco_seguro</code>. La segura agrega <code>php/soporte.php</code> para desbloquear cuentas.</td></tr>
+            <tr><td><strong>Qué fallaba</strong></td><td>Intentos ilimitados por usuario y por IP, sin bloqueo, contraseña comparada en texto plano y sin regenerar el ID de sesión.</td></tr>
+            <tr><td><strong>Riesgo</strong></td><td>Un programa puede probar contraseñas sin parar hasta entrar a una cuenta bancaria.</td></tr>
+          </tbody>
+        </table>
+      </div>
+    </section>
+
+    <!-- 04 Medidas -->
+    <section id="medidas">
+      <span class="numero">04 / PROTECCIÓN</span>
+      <h2>Las medidas de protección</h2>
+      <div class="tabla-contenedor">
+        <table>
+          <thead><tr><th>Medida</th><th>Contra qué protege</th></tr></thead>
+          <tbody>
+            <tr><td>Bloqueo escalonado por usuario (3 → 2 min; 3 más → permanente)</td><td>Fuerza bruta contra una cuenta.</td></tr>
+            <tr><td>Límite por IP (10 fallos en 15 min → 429)</td><td>Password spraying y barrido de usuarios.</td></tr>
+            <tr><td>Mensaje único</td><td>Saber qué usuarios existen.</td></tr>
+            <tr><td>Tiempo parejo (hash falso)</td><td>Saber qué usuarios existen midiendo el tiempo.</td></tr>
+            <tr><td>Contador en un solo UPDATE</td><td>Perder fallos por intentos simultáneos.</td></tr>
+            <tr><td>Fechas con <code>NOW()</code> / <code>DATE_ADD</code></td><td>Desfase de hora entre PHP y MySQL.</td></tr>
+            <tr><td>Reinicio tras login correcto</td><td>Bloqueos injustos a usuarios legítimos.</td></tr>
+            <tr><td>Registro de intentos</td><td>No saber qué pasó (falta de trazabilidad).</td></tr>
+            <tr><td><code>password_verify</code> contra un hash</td><td>Leer las claves si se filtra la base.</td></tr>
+          </tbody>
+        </table>
+      </div>
+
+      <h3>Códigos HTTP que aparecen</h3>
+      <div class="tabla-contenedor">
+        <table>
+          <thead><tr><th>Código</th><th>Nombre</th><th>Cuándo lo usa Banco Alfa</th></tr></thead>
+          <tbody>
+            <tr><td><code>401</code></td><td>Unauthorized (no autorizado)</td><td>Credenciales incorrectas o cuenta bloqueada (con el mensaje único).</td></tr>
+            <tr><td><code>405</code></td><td>Method Not Allowed (método no permitido)</td><td>Se pide <code>acceso.php</code> con GET en lugar de POST.</td></tr>
+            <tr><td><code>429</code></td><td>Too Many Requests (demasiadas peticiones)</td><td>Más de 10 fallos desde una IP en 15 minutos.</td></tr>
+          </tbody>
+        </table>
+      </div>
+
+      <div class="nota"><strong>La contra del bloqueo:</strong> cualquiera puede escribir mal 6 veces la clave de otro usuario y dejarlo bloqueado (es una denegación de servicio). Y el límite por IP usa <code>REMOTE_ADDR</code>: en una oficina o red compartida, todos salen con la misma IP, así que los fallos de uno pueden dejar a todos con <code>429</code>. El grupo sugiere evaluar CAPTCHA, retardos progresivos o avisos.</div>
+
+      <h3>Lo que pide la consigna para este tema</h3>
+      <div class="tabla-contenedor">
+        <table>
+          <thead><tr><th>Consigna</th><th>Cómo lo cumple Banco Alfa</th></tr></thead>
+          <tbody>
+            <tr><td>Limitación de intentos</td><td>Contador por usuario y límite por IP.</td></tr>
+            <tr><td>Espera progresiva o bloqueo temporal</td><td>Bloqueo de 2 minutos y después permanente (escalonado).</td></tr>
+            <tr><td>Registro de intentos</td><td>Tabla <code>log_intentos</code> con usuario, IP, resultado y fecha.</td></tr>
+          </tbody>
+        </table>
+      </div>
+    </section>
+
+    <!-- 05 Código -->
+    <section id="codigo">
+      <span class="numero">05 / CÓDIGO</span>
+      <h2>El código explicado</h2>
+      <div class="ojo"><strong>Ojo:</strong> el informe no trae fragmentos de código. Todo el código de esta sección es <strong>ilustrativo</strong>: se armó a partir de lo que el informe describe (tablas, columnas, límites y códigos HTTP). Los nombres de columnas (<code>asu_intentos</code>, <code>asu_bloqueos</code>, <code>asu_bloqueado_hasta</code>) y de la función <code>registrarIntento()</code> sí son los del informe.</div>
+
+      <h3>1. Verificar la contraseña: php/acceso.php</h3>
+      <div class="comparacion">
+        <div class="version"><span class="franja">Vulnerable</span>
+<pre><code>$sql = "SELECT * FROM usuarios
+        WHERE asu_nombre = ? AND asu_clave = ?";
+$stmt = $con-&gt;prepare($sql);
+$stmt-&gt;bind_param("ss", $usuario, $clave);
+$stmt-&gt;execute();
+$fila = $stmt-&gt;get_result()-&gt;fetch_assoc();
+
+registrarIntento($con, $usuario, $ip,
+                 $fila ? "exitoso" : "fallido");
+if ($fila) {
+    $_SESSION["usuario"] = $fila["asu_nombre"];
+    echo json_encode(["ok" =&gt; true]);
+} else {
+    echo json_encode(["ok" =&gt; false]);
+}</code></pre>
+          <p>Sin límite: se puede repetir para siempre. La clave está en texto plano. Usa consulta preparada, así que no tiene inyección SQL.</p>
+        </div>
+        <div class="version protegido"><span class="franja">Protegido</span>
+<pre><code>if ($_SERVER["REQUEST_METHOD"] !== "POST") {
+    http_response_code(405);
+    exit;
+}
+// 1) límite por IP
+if (fallosDeIp($con, $ip) &gt;= 10) {
+    registrarIntento($con, $usuario, $ip, "bloqueado_ip");
+    http_response_code(429);
+    exit;
+}
+// 2) buscar al usuario (solo por nombre)
+//    trae también: asu_bloqueado_hasta &gt; NOW() AS bloqueada
+$fila = buscarUsuario($con, $usuario);
+// 3) tiempo parejo: siempre se verifica un hash
+$hash = $fila ? $fila["asu_clave"] : $HASH_FALSO;
+$claveOk = password_verify($clave, $hash) &amp;&amp; $fila;
+// 4) cuenta bloqueada: se rechaza aunque la clave sea buena
+if ($fila &amp;&amp; $fila["bloqueada"]) {
+    registrarIntento($con, $usuario, $ip, "bloqueado");
+    http_response_code(401);
+    echo json_encode(["ok" =&gt; false,
+        "mensaje" =&gt; "Usuario o contraseña incorrectos"]);
+    exit;   // no suma fallos mientras dura el bloqueo
+}</code></pre>
+          <p>Primero los filtros (método, IP, bloqueo) y después la decisión.</p>
+        </div>
+      </div>
+
+      <h3>2. Qué pasa después: fallo o acierto</h3>
+      <div class="comparacion">
+        <div class="version"><span class="franja">Vulnerable</span>
+<pre><code>// no hay contador ni bloqueo:
+// el fallo solo se registra
+registrarIntento($con, $usuario, $ip, "fallido");</code></pre>
+          <p>El registro existe, pero nada actúa sobre él.</p>
+        </div>
+        <div class="version protegido"><span class="franja">Protegido</span>
+<pre><code>if (!$claveOk) {
+    sumarFallo($con, $usuario);   // un solo UPDATE
+    registrarIntento($con, $usuario, $ip, "fallido");
+    http_response_code(401);
+    echo json_encode(["ok" =&gt; false,
+        "mensaje" =&gt; "Usuario o contraseña incorrectos"]);
+    exit;
+}
+// login correcto
+session_regenerate_id(true);
+$sql = "UPDATE usuarios SET asu_intentos = 0, asu_bloqueos = 0,
+        asu_bloqueado_hasta = NULL WHERE asu_nombre = ?";
+registrarIntento($con, $usuario, $ip, "exitoso");</code></pre>
+          <p>Mismo mensaje para todo; al acertar, contadores a cero.</p>
+        </div>
+      </div>
+
+      <h3>3. El contador en un solo UPDATE</h3>
+<pre><code>UPDATE usuarios SET
+  -- se escribe primero: MySQL usa los valores ya cambiados en las columnas siguientes
+  asu_bloqueado_hasta = IF(asu_intentos + 1 &gt;= 3,
+        IF(asu_bloqueos = 0, DATE_ADD(NOW(), INTERVAL 2 MINUTE), '9999-12-31'),
+        asu_bloqueado_hasta),
+  asu_bloqueos = IF(asu_intentos + 1 &gt;= 3, asu_bloqueos + 1, asu_bloqueos),
+  asu_intentos = IF(asu_intentos + 1 &gt;= 3, 0, asu_intentos + 1)
+WHERE asu_nombre = ?;</code></pre>
+      <p>En palabras: suma un fallo. Si llega a 3, bloquea: la primera vez, 2 minutos (<code>DATE_ADD(NOW(), INTERVAL 2 MINUTE)</code>); la segunda, para siempre. Todo en una sola orden, sin que PHP lea y escriba por separado.</p>
+
+      <h3>Línea por línea</h3>
+      <div class="tabla-contenedor">
+        <table class="tabla-lineas">
+          <thead><tr><th>Línea</th><th>Qué hace</th><th>Por qué importa</th><th>Qué pasa si se quita</th></tr></thead>
+          <tbody>
+            <tr><td><code>REQUEST_METHOD !== "POST"</code> → <code>405</code></td><td>Solo acepta POST.</td><td>El login no se puede pedir por la URL con GET.</td><td>Se acepta cualquier método; poco riesgo directo, pero es un control menos.</td></tr>
+            <tr><td><code>fallosDeIp(...) &gt;= 10</code> → <code>429</code></td><td>Corta si la IP falló 10 veces en 15 min.</td><td>Frena el password spraying.</td><td>Desde una IP se prueban infinitos usuarios.</td></tr>
+            <tr><td><code>$hash = $fila ? ... : $HASH_FALSO</code></td><td>Elige un hash aunque el usuario no exista.</td><td>Así siempre se ejecuta <code>password_verify</code>, que tarda lo mismo.</td><td>Un usuario inexistente responde más rápido: se puede enumerar por tiempo.</td></tr>
+            <tr><td><code>password_verify($clave, $hash)</code></td><td>Compara la clave con el hash guardado.</td><td>La base no guarda la clave legible.</td><td>Habría que guardar texto plano.</td></tr>
+            <tr><td><code>if ($fila["bloqueada"]) { ... exit; }</code></td><td>Rechaza la cuenta bloqueada aunque la clave sea correcta, con el mismo mensaje.</td><td>Si no, el bloqueo no sirve: el atacante seguiría probando.</td><td>Durante el bloqueo, el que acierta entra.</td></tr>
+            <tr><td><code>sumarFallo(...)</code> (un solo UPDATE)</td><td>Suma el fallo y decide el bloqueo.</td><td>Sin condiciones de carrera.</td><td>No hay contador: intentos ilimitados.</td></tr>
+            <tr><td><code>registrarIntento(...)</code></td><td>Guarda usuario, IP, resultado y fecha.</td><td>Trazabilidad; además el límite por IP cuenta sobre este registro.</td><td>No queda rastro y el límite por IP no tiene qué contar.</td></tr>
+            <tr><td><code>http_response_code(401)</code> + mensaje único</td><td>Responde “no autorizado” con el mismo texto siempre.</td><td>No revela si el usuario existe.</td><td>Si cambia el texto según el caso, se enumeran usuarios.</td></tr>
+            <tr><td><code>UPDATE ... asu_intentos = 0 ...</code></td><td>Pone los contadores en cero al acertar.</td><td>Evita bloqueos injustos.</td><td>Fallos viejos se suman a los nuevos y bloquean al usuario legítimo.</td></tr>
+            <tr><td><code>session_regenerate_id(true)</code></td><td>Cambia el ID de sesión al entrar.</td><td>Protege contra fijación de sesión (módulo 1).</td><td>La vulnerable no lo hace.</td></tr>
+          </tbody>
+        </table>
+      </div>
+    </section>
+
+    <!-- 06 Ejemplos -->
+    <section id="ejemplos">
+      <span class="numero">06 / ESCENARIOS</span>
+      <h2>Ejemplos paso a paso</h2>
+
+      <div class="escenario">
+        <h3>1. Un programa prueba 1000 claves contra “admin”</h3>
+        <p class="accion"><strong>Acción:</strong> el atacante usa una lista de contraseñas y las manda una tras otra.</p>
+        <div class="comparacion">
+          <div class="version"><span class="franja">Vulnerable</span><p>Las 1000 se procesan. Si la clave está en la lista, entra.</p></div>
+          <div class="version protegido"><span class="franja">Protegido</span><p>Al tercer fallo, la cuenta queda bloqueada 2 minutos. Las siguientes reciben el mismo mensaje y se rechazan, aunque alguna sea la correcta.</p></div>
+        </div>
+      </div>
+
+      <div class="escenario">
+        <h3>2. Sigue probando después del bloqueo temporal</h3>
+        <p class="accion"><strong>Acción:</strong> espera los 2 minutos y falla 3 veces más.</p>
+        <div class="comparacion">
+          <div class="version"><span class="franja">Vulnerable</span><p>Nunca se bloquea.</p></div>
+          <div class="version protegido"><span class="franja">Protegido</span><p>Bloqueo permanente. El dueño tiene que pedirle a Soporte que lo libere; Soporte queda registrado en <code>log_soporte</code>.</p></div>
+        </div>
+      </div>
+
+      <div class="escenario">
+        <h3>3. Password spraying desde una máquina</h3>
+        <p class="accion"><strong>Acción:</strong> prueba <code>123456</code> con 50 usuarios distintos, 1 intento cada uno.</p>
+        <div class="comparacion">
+          <div class="version"><span class="franja">Vulnerable</span><p>Prueba los 50 sin problema.</p></div>
+          <div class="version protegido"><span class="franja">Protegido</span><p>Ninguna cuenta llega a 3 fallos, pero la IP sí llega a 10: a partir de ahí responde <code>429</code>.</p></div>
+        </div>
+      </div>
+
+      <div class="escenario">
+        <h3>4. Averiguar qué usuarios existen</h3>
+        <p class="accion"><strong>Acción:</strong> prueba “juan” (no existe) y “maria” (existe) con una clave cualquiera.</p>
+        <div class="comparacion">
+          <div class="version"><span class="franja">Sin mensaje único</span><p>“Usuario no existe” para juan y “Clave incorrecta” para maria: ya sabe que maria es real.</p></div>
+          <div class="version protegido"><span class="franja">Protegido</span><p>Los dos reciben “Usuario o contraseña incorrectos” y tardan lo mismo.</p></div>
+        </div>
+      </div>
+
+      <div class="escenario">
+        <h3>5. Un usuario legítimo se equivoca</h3>
+        <p class="accion"><strong>Acción:</strong> falla 2 veces, a la tercera acierta. Al otro día se equivoca 1 vez.</p>
+        <div class="comparacion">
+          <div class="version"><span class="franja">Sin reinicio</span><p>Los 2 fallos viejos + el nuevo suman 3: queda bloqueado por un solo error.</p></div>
+          <div class="version protegido"><span class="franja">Protegido</span><p>Al acertar, el contador volvió a 0. El error del otro día cuenta como 1.</p></div>
+        </div>
+      </div>
+
+      <div class="escenario">
+        <h3>6. La contra: bloquear a otro a propósito</h3>
+        <p class="accion"><strong>Acción:</strong> alguien que conoce el usuario de un cliente escribe 6 claves falsas.</p>
+        <div class="comparacion">
+          <div class="version"><span class="franja">Vulnerable</span><p>No pasa nada (pero tampoco hay protección).</p></div>
+          <div class="version protegido"><span class="franja">Protegido</span><p>El cliente queda bloqueado para siempre hasta que Soporte lo libere. Es una denegación de servicio que el propio informe reconoce.</p></div>
+        </div>
+      </div>
+    </section>
+
+    <!-- 07 Pruebas -->
+    <section id="pruebas">
+      <span class="numero">07 / EVIDENCIAS</span>
+      <h2>Pruebas y resultados</h2>
+      <div class="ojo"><strong>Ojo:</strong> el grupo <strong>no ejecutó</strong> las pruebas: la columna “Resultado obtenido” del informe está vacía. Lo que sigue es el plan, con lo que <strong>se espera</strong> que pase. La consigna pide probar las dos versiones y registrar lo realmente observado, con capturas.</div>
+      <div class="tabla-contenedor">
+        <table>
+          <thead><tr><th>N.º</th><th>Caso de prueba</th><th>Resultado esperado</th></tr></thead>
+          <tbody>
+            <tr><td>1</td><td>Login válido (segura)</td><td>Va a <code>menu.php</code>; queda registrado.</td></tr>
+            <tr><td>2</td><td>Campos vacíos</td><td>Aviso en pantalla; no se envía la petición.</td></tr>
+            <tr><td>3</td><td>Clave incorrecta de un usuario que existe</td><td>Mensaje único; contador +1.</td></tr>
+            <tr><td>4</td><td>Usuario que no existe</td><td>Mismo mensaje; registro “usuario_inexistente”.</td></tr>
+            <tr><td>5</td><td>3 fallos seguidos</td><td>Bloqueo de 2 min; la clave correcta también se rechaza.</td></tr>
+            <tr><td>6</td><td>3 fallos más después del bloqueo</td><td>Bloqueo permanente.</td></tr>
+            <tr><td>7</td><td>Más de 10 fallos desde una IP en 15 min</td><td>Respuesta 429; registro “bloqueado_ip”.</td></tr>
+            <tr><td>8</td><td>Soporte desbloquea una cuenta</td><td>Cuenta liberada; queda en <code>log_soporte</code>.</td></tr>
+            <tr><td>9</td><td>Usuario sin rol Soporte abre <code>soporte.php</code></td><td>Lo manda a <code>menu.php</code>.</td></tr>
+            <tr><td>10</td><td>Desbloqueo con token CSRF inválido</td><td>Acción rechazada.</td></tr>
+            <tr><td>11</td><td><code>menu.php</code> sin sesión</td><td>Lo manda al login.</td></tr>
+            <tr><td>12</td><td>Muchos fallos en la versión vulnerable</td><td>Nunca se bloquea; todos se registran.</td></tr>
+            <tr><td>13</td><td>“Atrás” después de cerrar sesión</td><td>No se muestra el panel.</td></tr>
+          </tbody>
+        </table>
+      </div>
+      <p>Lo que sí hizo el grupo fue revisar el código con una lista de controles: la vulnerable cumple 6 de 18 y la segura 18 de 21. A la segura le faltan doble factor, configurar la cookie de sesión y un usuario de base de datos con permisos mínimos.</p>
+      <div class="ojo"><strong>Ojo (otros hallazgos del grupo):</strong> la conexión a la base usa un usuario con todos los permisos; las dos versiones comparten la tabla <code>usuarios</code> aunque una guarda hash y la otra texto plano; y <code>salir.php</code> no borra la cookie de sesión (ver el cierre completo del módulo 1).</div>
+    </section>
+
+    <!-- 08 Trampas -->
+    <section id="trampas">
+      <span class="numero">08 / CUIDADO</span>
+      <h2>Trampas de examen</h2>
+      <div class="tabla-contenedor">
+        <table>
+          <thead><tr><th>Lo que parece</th><th>Lo correcto</th></tr></thead>
+          <tbody>
+            <tr><td>“Fuerza bruta, diccionario y spraying son lo mismo.”</td><td>Todo / lista de claves comunes / una clave contra muchos usuarios.</td></tr>
+            <tr><td>“El bloqueo por usuario frena el password spraying.”</td><td>No: cada usuario recibe 1 intento. Lo frena el límite por IP.</td></tr>
+            <tr><td>“Durante el bloqueo, si pongo la clave correcta entro.”</td><td>No: se rechaza igual (caso de prueba 5).</td></tr>
+            <tr><td>“Con el mismo mensaje ya no se pueden enumerar usuarios.”</td><td>También hace falta el tiempo parejo.</td></tr>
+            <tr><td>“La versión vulnerable tiene inyección SQL.”</td><td>No: usa consultas preparadas. Su problema es no limitar y el texto plano.</td></tr>
+            <tr><td>“<code>429</code> significa clave incorrecta.”</td><td><code>429</code> es demasiadas peticiones; clave incorrecta es <code>401</code>.</td></tr>
+            <tr><td>“<code>405</code> es usuario bloqueado.”</td><td><code>405</code> es método no permitido (GET en lugar de POST).</td></tr>
+            <tr><td>“Leer el contador en PHP, sumar 1 y guardar es lo mismo.”</td><td>Dos intentos simultáneos pueden perder un fallo. Va en un solo UPDATE.</td></tr>
+            <tr><td>“El bloqueo no tiene contras.”</td><td>Permite bloquear a otro a propósito; el límite por IP afecta redes compartidas.</td></tr>
+            <tr><td>“El grupo comprobó que el bloqueo funciona.”</td><td>Solo lo revisó en el código; las pruebas no se ejecutaron.</td></tr>
+          </tbody>
+        </table>
+      </div>
+    </section>
+
+    <!-- 09 Preguntas probables -->
+    <section id="preguntas">
+      <span class="numero">09 / REPASO</span>
+      <h2>Preguntas probables</h2>
+      <p class="chico">Tocá cada pregunta para ver la respuesta.</p>
+      <details><summary>¿Qué es un ataque de fuerza bruta?</summary><p>Probar contraseñas de forma automática hasta acertar, aprovechando que el login no limita los intentos.</p></details>
+      <details><summary>¿Qué diferencia hay con diccionario y password spraying?</summary><p>Diccionario prueba una lista de claves comunes; spraying prueba una clave contra muchos usuarios.</p></details>
+      <details><summary>¿Qué fallaba en la versión vulnerable?</summary><p>Intentos ilimitados, sin bloqueo, clave en texto plano y sin regenerar el ID de sesión.</p></details>
+      <details><summary>¿Cómo es el bloqueo escalonado?</summary><p>3 fallos → 2 minutos; 3 fallos más → permanente; Soporte desbloquea.</p></details>
+      <details><summary>¿Para qué sirve el límite por IP?</summary><p>Para frenar el password spraying: más de 10 fallos en 15 minutos desde una IP → 429.</p></details>
+      <details><summary>¿Por qué un mensaje único?</summary><p>Para no revelar si el usuario existe (enumeración de usuarios).</p></details>
+      <details><summary>¿Para qué el hash falso?</summary><p>Para que el login tarde lo mismo exista o no el usuario.</p></details>
+      <details><summary>¿Por qué el contador va en un solo UPDATE?</summary><p>Para que dos intentos simultáneos no lean el mismo valor y se pierda un fallo.</p></details>
+      <details><summary>¿Por qué se reinicia el contador al acertar?</summary><p>Para no bloquear a un usuario legítimo por errores viejos.</p></details>
+      <details><summary>¿Qué significan 401, 405 y 429?</summary><p>No autorizado; método no permitido; demasiadas peticiones.</p></details>
+      <details><summary>¿Qué contras tiene el bloqueo?</summary><p>Se puede bloquear a otro a propósito, y el límite por IP afecta a todos los que comparten red.</p></details>
+      <details><summary>¿Qué pide la consigna para este tema?</summary><p>Limitar intentos, espera progresiva o bloqueo temporal, y registrar los intentos.</p></details>
+    </section>
+
+    <!-- 10 Glosario -->
+    <section id="glosario">
+      <span class="numero">10 / TÉRMINOS</span>
+      <h2>Glosario</h2>
+      <dl class="glosario">
+        <dt>Fuerza bruta</dt><dd>Probar contraseñas de forma automática hasta acertar.</dd>
+        <dt>Ataque de diccionario</dt><dd>Probar una lista de contraseñas comunes.</dd>
+        <dt>Password spraying</dt><dd>Probar una contraseña común contra muchos usuarios.</dd>
+        <dt>Bloqueo escalonado</dt><dd>Bloqueos cada vez más duros: primero temporal, después permanente.</dd>
+        <dt>Bloqueo temporal</dt><dd>La cuenta no acepta ingresos por un tiempo (2 minutos en Banco Alfa).</dd>
+        <dt>Dirección IP</dt><dd>Dirección de la máquina que hace el pedido; en PHP, <code>$_SERVER["REMOTE_ADDR"]</code>.</dd>
+        <dt>Enumeración de usuarios</dt><dd>Descubrir qué usuarios existen por el mensaje o el tiempo de respuesta.</dd>
+        <dt>Tiempo parejo</dt><dd>Que el login tarde lo mismo exista o no el usuario.</dd>
+        <dt>Condición de carrera</dt><dd>Error cuando dos operaciones al mismo tiempo leen y escriben el mismo dato.</dd>
+        <dt>Actualización atómica</dt><dd>Cambio que la base hace de una sola vez, sin pasos intermedios.</dd>
+        <dt>NOW() / DATE_ADD()</dt><dd>Funciones de MySQL: la fecha y hora actual / sumarle tiempo.</dd>
+        <dt>401 / 405 / 429</dt><dd>No autorizado / método no permitido / demasiadas peticiones.</dd>
+        <dt>Registro de intentos (log)</dt><dd>Tabla con usuario, IP, resultado y fecha de cada intento.</dd>
+        <dt>Denegación de servicio</dt><dd>Dejar a usuarios legítimos sin poder usar el sistema.</dd>
+        <dt>CAPTCHA</dt><dd>Prueba para distinguir una persona de un programa.</dd>
+        <dt>CWE-307</dt><dd>Debilidad: no restringir los intentos excesivos de autenticación.</dd>
+      </dl>
+    </section>
+
+    <!-- 11 Examen -->
+    <section id="practica">
+      <span class="numero">11 / PRÁCTICA</span>
+      <h2>Examen de práctica</h2>
+      <p>Elegí una opción en cada pregunta. Se bloquea la pregunta y se muestra la explicación. El botón del final mezcla preguntas y opciones.</p>
+      <div id="examen" data-banco="preguntas3"><p class="chico">El examen necesita JavaScript activado.</p></div>
+    </section>
+  </main>
+</div>
+
+<footer>Programación IV · Módulo 3: fuerza bruta · Fuentes: informe del grupo, consigna del TP, manual de PHP y OWASP</footer>
+<script src="js/preguntas3.js"></script>
+<script src="js/script.js"></script>
+</body>
+</html>

@@ -1,0 +1,448 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Módulo 4 · Recuperación segura de contraseñas</title>
+<link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+<header>
+  <div class="etiqueta">Programación · Seguridad informática · Módulo 4</div>
+  <h1>Recuperación segura de contraseñas</h1>
+  <p>La opción “olvidé mi contraseña” es una segunda puerta a la cuenta. Cómo se protege el código, los intentos, las solicitudes y, sobre todo, a qué cuenta se le cambia la contraseña.</p>
+  <div class="chips">
+    <span class="chip">Informe 4 de 5</span>
+    <span class="chip">Distribuidora Horizonte S.A. (ficticia)</span>
+    <span class="chip">PHP · PDO · MySQL</span>
+    <span class="chip">Examen: 20 preguntas</span>
+  </div>
+</header>
+
+<div class="disposicion">
+  <nav class="indice" aria-label="Contenido">
+    <strong>CONTENIDO</strong>
+    <a href="#esencial">01 · Lo esencial</a>
+    <a href="#conceptos">02 · Conceptos</a>
+    <a href="#caso">03 · El caso del grupo</a>
+    <a href="#medidas">04 · Medidas de protección</a>
+    <a href="#codigo">05 · El código explicado</a>
+    <a href="#ejemplos">06 · Ejemplos paso a paso</a>
+    <a href="#pruebas">07 · Pruebas y resultados</a>
+    <a href="#trampas">08 · Trampas de examen</a>
+    <a href="#preguntas">09 · Preguntas probables</a>
+    <a href="#glosario">10 · Glosario</a>
+    <a href="#practica">11 · Examen de práctica</a>
+    <button type="button" class="boton-imprimir">Imprimir o guardar PDF</button>
+    <a class="volver" href="index.html">Volver al inicio</a>
+  </nav>
+
+  <main>
+    <!-- 01 Lo esencial -->
+    <section id="esencial">
+      <span class="numero">01 / EN 1 MINUTO</span>
+      <h2>Lo esencial</h2>
+      <ol class="esencial">
+        <li>Recuperar la contraseña permite cambiarla sin saber la anterior: es una <strong>segunda puerta</strong> a la cuenta. Flujo: correo → código → contraseña nueva.</li>
+        <li>Mismo mensaje exista o no el correo: así no se sabe qué correos tienen cuenta.</li>
+        <li>El código se crea con <code>random_int()</code> (no <code>rand()</code>) y se guarda solo su hash.</li>
+        <li>El código vence a los 10 minutos, sirve una sola vez y se bloquea al 5.º intento fallido.</li>
+        <li>Límite de solicitudes: 3 por correo y 10 por IP cada 15 minutos.</li>
+        <li>Lo más importante (CP-07): la cuenta a cambiar sale de la <strong>sesión del servidor</strong>, nunca de la URL (<code>?email=</code>).</li>
+        <li>El JavaScript solo ayuda al usuario; toda la seguridad va en PHP, porque el navegador se puede modificar.</li>
+      </ol>
+    </section>
+
+    <!-- 02 Conceptos -->
+    <section id="conceptos">
+      <span class="numero">02 / TEORÍA</span>
+      <h2>Conceptos</h2>
+
+      <h3>1. La recuperación es una segunda puerta</h3>
+      <p>“Olvidé mi contraseña” deja cambiar la clave sin conocer la anterior. Por eso tiene que ser tan segura como el login: si es débil, no importa lo fuerte que sea la contraseña. El flujo tiene tres pasos.</p>
+<pre><code>1. recuperar.php   → el usuario escribe su correo
+2. verificar.php   → escribe el código de 6 números que le llegó
+3. nueva_clave.php → elige la contraseña nueva</code></pre>
+      <div class="ejemplo"><b class="titulo">Comparación</b>Es como la llave de repuesto que el portero guarda en la conserjería. Si se la da a cualquiera que diga “soy del 3.º B”, la cerradura buena de la puerta no sirve de nada.</div>
+
+      <h3>2. Un código que no se pueda adivinar ni leer</h3>
+      <p><code>rand()</code> no es seguro para secretos: sus números se pueden predecir. <code>random_int()</code> usa un generador criptográficamente seguro (imposible de predecir). En la base no se guarda el código, sino su hash, igual que una contraseña (ver <a href="modulo2_contrasenas.html">módulo 2</a>).</p>
+<pre><code>$codigo = str_pad((string) random_int(0, 999999), 6, '0', STR_PAD_LEFT);
+$hash   = password_hash($codigo, PASSWORD_DEFAULT);   // en la base va $hash</code></pre>
+
+      <h3>3. Vence y sirve una sola vez</h3>
+      <p>El código vale 10 minutos; después se rechaza. Cuando se usa, queda marcado como “usado”, y si se pide otro, el anterior se anula. Así un código viejo, uno de un correo olvidado o uno ya usado no sirven.</p>
+<pre><code>... VALUES (2, ?, ?, NOW() + INTERVAL 10 MINUTE)   -- expira_en
+UPDATE codigos_recuperacion SET estado = 'usado' WHERE id = ?</code></pre>
+
+      <h3>4. Límites de intentos y de solicitudes</h3>
+      <p>Un código de 6 números tiene solo un millón de valores; sin límite se adivina probando. Por eso al 5.º código incorrecto queda bloqueado. Además, cada correo puede pedir 3 códigos y cada IP 10, cada 15 minutos: así nadie inunda de correos a un usuario.</p>
+      <div class="ejemplo"><b class="titulo">Medición del grupo</b>Sin límite, la versión vulnerable aceptó el código correcto después de 300 intentos fallidos seguidos.</div>
+
+      <h3>5. El mismo mensaje siempre</h3>
+      <p>Si el sistema dice “No existe ninguna cuenta con ese correo”, el atacante sabe qué correos son reales (enumeración). La versión protegida responde siempre lo mismo y hace el mismo trabajo (calcula el hash) exista o no la cuenta.</p>
+<pre><code>avisar('Si el correo está registrado, te enviamos un código de 6 números. ...', 'info');</code></pre>
+
+      <h3>6. La cuenta sale de la sesión, no de la URL</h3>
+      <p>Todo lo que viene en la URL (<code>?email=...</code>) lo puede cambiar el usuario. Por eso, cuando el código se verifica, el servidor guarda en <code>$_SESSION</code> qué cuenta lo verificó, y el paso 3 cambia solo esa. El JavaScript (mostrar la clave, contar caracteres) solo ayuda: los controles van en PHP, porque lo que corre en el navegador se puede modificar.</p>
+<pre><code>$_SESSION['rec_usuario_id'] = (int) $fila['usuario_id'];   // al verificar el código
+$usuario = buscar_usuario_por_id($_SESSION['rec_usuario_id']); // en el paso 3</code></pre>
+    </section>
+
+    <!-- 03 El caso -->
+    <section id="caso">
+      <span class="numero">03 / EL INFORME</span>
+      <h2>El caso del grupo</h2>
+      <div class="tabla-contenedor">
+        <table>
+          <tbody>
+            <tr><td><strong>Empresa</strong></td><td>Distribuidora Horizonte S.A. (ficticia). Empleados de administración y ventas entran a un portal interno.</td></tr>
+            <tr><td><strong>Sistema</strong></td><td>PHP con PDO, MySQL/MariaDB, HTML, CSS y JavaScript. Dos versiones (<code>v1_vulnerable</code> y <code>v2_protegida</code>) que solo cambian <code>recuperar.php</code>, <code>verificar.php</code> y <code>nueva_clave.php</code>. Los correos van a una bandeja simulada.</td></tr>
+            <tr><td><strong>Qué fallaba</strong></td><td>Revelaba qué correos existen, código con <code>rand()</code> en texto plano, sin vencimiento ni límites, reutilizable, cuenta tomada de la URL, cualquier contraseña nueva y sin aviso.</td></tr>
+            <tr><td><strong>Riesgo</strong></td><td>Un compañero (o un extraño) cambia la contraseña de otra cuenta y entra con su identidad; el titular pierde el acceso sin enterarse.</td></tr>
+          </tbody>
+        </table>
+      </div>
+      <p class="chico">La recuperación de contraseñas no figura en la tabla de temas de la consigna; entra como “otros temas según su asignación”.</p>
+    </section>
+
+    <!-- 04 Medidas -->
+    <section id="medidas">
+      <span class="numero">04 / PROTECCIÓN</span>
+      <h2>Las medidas de protección</h2>
+      <div class="tabla-contenedor">
+        <table>
+          <thead><tr><th>Falla (versión 1)</th><th>Riesgo</th><th>Protección (versión 2)</th></tr></thead>
+          <tbody>
+            <tr><td>Mensaje distinto si el correo existe o no</td><td>Saber qué correos tienen cuenta</td><td>Siempre el mismo mensaje</td></tr>
+            <tr><td>Código con <code>rand()</code></td><td>Código predecible</td><td><code>random_int()</code></td></tr>
+            <tr><td>Código guardado tal cual</td><td>Quien lea la base lo usa</td><td>Solo su hash (<code>password_hash</code> / <code>password_verify</code>)</td></tr>
+            <tr><td>Código sin vencimiento</td><td>Un código viejo sigue sirviendo</td><td>Vence a los 10 minutos</td></tr>
+            <tr><td>Código reutilizable</td><td>Usar otra vez un código usado</td><td>Un solo uso; el anterior se anula</td></tr>
+            <tr><td>Intentos ilimitados</td><td>Adivinar el código</td><td>5 intentos y el código queda bloqueado</td></tr>
+            <tr><td>Solicitudes ilimitadas</td><td>Inundar de correos al usuario</td><td>3 por correo y 10 por IP cada 15 minutos</td></tr>
+            <tr><td>Cuenta tomada de la URL (<code>?email=</code>)</td><td>Cambiar la contraseña de otro</td><td>Cuenta tomada de la sesión del servidor</td></tr>
+            <tr><td>Contraseña nueva sin requisitos</td><td>Contraseñas débiles</td><td>De 15 a 64 caracteres, sin contraseñas comunes</td></tr>
+            <tr><td>Sin aviso ni registro</td><td>El titular no se entera y no queda rastro</td><td>Correo de aviso al titular y bitácora</td></tr>
+          </tbody>
+        </table>
+      </div>
+      <div class="nota"><strong>Las contras:</strong> alguien puede pedir códigos a nombre de otro: anula los anteriores y lo deja esperando 15 minutos. Y el límite por IP puede afectar a varios usuarios que salen a Internet por la misma dirección.</div>
+    </section>
+
+    <!-- 05 Código -->
+    <section id="codigo">
+      <span class="numero">05 / CÓDIGO</span>
+      <h2>El código explicado</h2>
+      <p>Código real del informe. En la versión 1 las debilidades están marcadas con <code>FALLA</code>; en la 2, las medidas con <code>PROTECCIÓN</code>. Los <code>...</code> son partes que el informe recorta.</p>
+
+      <h3>Paso 1: pedir el código (recuperar.php)</h3>
+      <div class="comparacion">
+        <div class="version"><span class="franja">Vulnerable</span>
+<pre><code>if (!$usuario) {
+    // FALLA 1: el mensaje revela si el correo tiene una cuenta (enumeración de usuarios)
+    $mensaje = 'No existe ninguna cuenta registrada con ese correo.';
+} else {
+    // FALLA 2: rand() no es un generador seguro para crear secretos
+    $codigo = (string) rand(100000, 999999);
+    // FALLA 3: el código se guarda tal cual (texto plano) y sin fecha de vencimiento
+    // FALLA 4: no hay límite: se pueden pedir todos los códigos que se quiera
+    conectar()-&gt;prepare('INSERT INTO codigos_recuperacion (version, usuario_id, codigo)
+                         VALUES (1, ?, ?)')-&gt;execute([$usuario['id'], $codigo]);
+    ...
+    // FALLA 5: el correo viaja en la dirección y los pasos siguientes confían en él
+    redirigir('verificar.php?email=' . urlencode($usuario['email']));
+}</code></pre>
+        </div>
+        <div class="version protegido"><span class="franja">Protegido</span>
+<pre><code>if (solicitudes_recientes('email', $email) &gt;= MAX_SOLICITUDES) {
+    registrar('solicitud_rechazada', $email, 'Superó el límite ... por correo');
+} elseif (solicitudes_recientes('ip', ip_cliente()) &gt;= MAX_SOLICITUDES_IP) {
+    registrar('solicitud_rechazada', $email, 'Superó el límite ... por IP');
+} else {
+    registrar('solicitud', $email);
+    $codigo = str_pad((string) random_int(0, 999999), 6, '0', STR_PAD_LEFT);
+    $hash = password_hash($codigo, PASSWORD_DEFAULT);
+    $usuario = buscar_usuario_por_email($email);
+    if ($usuario) {
+        // se anula el código anterior y se guarda el hash con vencimiento
+        ... VALUES (2, ?, ?, NOW() + INTERVAL ' . MINUTOS_VALIDEZ . ' MINUTE) ...
+        enviar_correo(...);
+    }
+}
+$_SESSION['rec_email'] = $email;
+avisar('Si el correo está registrado, te enviamos un código de 6 números. ...', 'info');</code></pre>
+        </div>
+      </div>
+
+      <h3>Paso 2: comprobar el código (verificar.php)</h3>
+      <div class="comparacion">
+        <div class="version"><span class="franja">Vulnerable</span>
+<pre><code>$email = $_GET['email'] ?? '';
+...
+'SELECT c.id FROM codigos_recuperacion c JOIN usuarios u ON u.id = c.usuario_id
+  WHERE c.version = 1 AND u.email = ? AND c.codigo = ?'
+...
+$_SESSION['codigo_verificado'] = true;
+redirigir('nueva_clave.php?email=' . urlencode($email));</code></pre>
+          <p>Acepta cualquier código que alguna vez se creó para ese correo: sin vencimiento, sin uso único y sin contar intentos.</p>
+        </div>
+        <div class="version protegido"><span class="franja">Protegido</span>
+<pre><code>WHERE c.version = 2 AND u.email = ? AND c.estado = 'activo' AND c.expira_en &gt; NOW()
+...
+if ($_SESSION['rec_intentos'] &gt;= MAX_INTENTOS) {
+    $mensaje = $mensaje_limite;
+} elseif ($fila &amp;&amp; password_verify($codigo, $fila['codigo'])) {
+    $pdo-&gt;prepare("UPDATE codigos_recuperacion SET estado = 'usado' WHERE id = ?")...
+    session_regenerate_id(true);
+    $_SESSION['rec_usuario_id'] = (int) $fila['usuario_id'];
+    $_SESSION['rec_vence'] = time() + MINUTOS_VALIDEZ * 60;
+    redirigir('nueva_clave.php');
+} else {
+    $_SESSION['rec_intentos']++;
+    // suma un intento al código y al quinto lo deja 'bloqueado'
+}</code></pre>
+          <p>Solo el último código activo y no vencido; lo marca como usado y guarda en la sesión qué cuenta lo verificó.</p>
+        </div>
+      </div>
+
+      <h3>Paso 3: elegir la contraseña nueva (nueva_clave.php)</h3>
+      <div class="comparacion">
+        <div class="version"><span class="franja">Vulnerable</span>
+<pre><code>// FALLA 7: la cuenta se toma de la dirección (?email=...), no de la que verificó el código
+$email = $_GET['email'] ?? '';
+...
+UPDATE usuarios SET password_hash = ?, clave_cambiada_en = NOW() WHERE email = ?</code></pre>
+          <p>Cambia la contraseña de la cuenta que diga la URL, sin requisitos.</p>
+        </div>
+        <div class="version protegido"><span class="franja">Protegido</span>
+<pre><code>if (isset($_SESSION['rec_usuario_id']) &amp;&amp; time() &lt;= ($_SESSION['rec_vence'] ?? 0)) {
+    $usuario = buscar_usuario_por_id($_SESSION['rec_usuario_id']);
+}
+...
+$mensaje = revisar_clave_nueva($clave, $repetir, $usuario['email']);
+if ($mensaje === '') {
+    // UPDATE usuarios ... WHERE id = ?  /  se anulan los códigos activos
+    registrar('clave_cambiada', $usuario['email']);
+    enviar_correo($usuario['email'], 'Tu contraseña fue cambiada', ...);
+    unset($_SESSION['rec_usuario_id'], $_SESSION['rec_vence']);
+}</code></pre>
+          <p>La cuenta sale de la sesión; revisa requisitos, registra, avisa y borra el permiso.</p>
+        </div>
+      </div>
+
+      <h3>Línea por línea</h3>
+      <div class="tabla-contenedor">
+        <table class="tabla-lineas">
+          <thead><tr><th>Línea</th><th>Qué hace</th><th>Por qué importa</th><th>Qué pasa si se quita o se cambia</th></tr></thead>
+          <tbody>
+            <tr><td><code>solicitudes_recientes(...) &gt;= MAX_SOLICITUDES</code></td><td>Cuenta los pedidos recientes del correo (y de la IP).</td><td>Límite de 3 por correo y 10 por IP cada 15 min.</td><td>Se pueden pedir códigos sin fin y llenar de correos al usuario.</td></tr>
+            <tr><td><code>random_int(0, 999999)</code></td><td>Crea el código con un generador seguro.</td><td>No se puede predecir.</td><td>Con <code>rand()</code>, el código es predecible.</td></tr>
+            <tr><td><code>str_pad(..., 6, '0', STR_PAD_LEFT)</code></td><td>Completa con ceros a la izquierda.</td><td>El código siempre tiene 6 dígitos (ej. <code>004213</code>).</td><td>Códigos como “4213” tendrían menos dígitos.</td></tr>
+            <tr><td><code>password_hash($codigo, ...)</code></td><td>Calcula el hash del código.</td><td>En la base no queda el código legible.</td><td>Quien lea la tabla usa el código (CP-08).</td></tr>
+            <tr><td>Hash calculado antes del <code>if ($usuario)</code></td><td>Hace el mismo trabajo exista o no la cuenta.</td><td>Tiempo de respuesta parejo.</td><td>Por el tiempo se podría saber qué correos existen.</td></tr>
+            <tr><td><code>NOW() + INTERVAL 10 MINUTE</code></td><td>Guarda cuándo vence.</td><td>El código deja de servir a los 10 min.</td><td>Un código viejo sirve para siempre (CP-06).</td></tr>
+            <tr><td><code>avisar('Si el correo está registrado...')</code></td><td>Mismo mensaje en todos los casos.</td><td>No revela qué correos existen.</td><td>Vuelve la enumeración (CP-03).</td></tr>
+            <tr><td><code>estado = 'activo' AND expira_en &gt; NOW()</code></td><td>Solo busca el código vigente.</td><td>Descarta usados, anulados, bloqueados y vencidos.</td><td>Sirven códigos viejos o ya usados (CP-05, CP-06).</td></tr>
+            <tr><td><code>rec_intentos &gt;= MAX_INTENTOS</code></td><td>Corta al llegar a 5 fallos.</td><td>No se puede adivinar el código.</td><td>Se prueban códigos sin límite (CP-04).</td></tr>
+            <tr><td><code>SET estado = 'usado'</code></td><td>Marca el código como usado.</td><td>Un solo uso.</td><td>El mismo código sirve otra vez (CP-05).</td></tr>
+            <tr><td><code>$_SESSION['rec_usuario_id'] = ...</code></td><td>Guarda en el servidor qué cuenta verificó el código.</td><td>El paso 3 sabe a quién cambiar sin preguntarle al navegador.</td><td>Habría que confiar en la URL: vuelve CP-07.</td></tr>
+            <tr><td><code>$_SESSION['rec_vence'] = time() + MINUTOS_VALIDEZ * 60</code></td><td>El permiso de cambio dura 10 minutos.</td><td>No queda abierto para siempre.</td><td>Una sesión olvidada podría cambiar la clave más tarde.</td></tr>
+            <tr><td><code>$email = $_GET['email']</code> (v1)</td><td>Toma la cuenta de la URL.</td><td>Es la falla más grave.</td><td>—</td></tr>
+            <tr><td><code>revisar_clave_nueva(...)</code></td><td>Exige 15 a 64 caracteres y rechaza las comunes.</td><td>Evita claves como <code>123456</code>.</td><td>Se acepta cualquier clave (CP-10).</td></tr>
+            <tr><td><code>enviar_correo(..., 'Tu contraseña fue cambiada')</code></td><td>Avisa al titular.</td><td>Si no fue él, se entera.</td><td>El titular pierde el acceso sin saber por qué.</td></tr>
+            <tr><td><code>unset($_SESSION['rec_usuario_id'], ...)</code></td><td>Borra el permiso después de usarlo.</td><td>El permiso sirve una sola vez.</td><td>Se podría volver a cambiar la clave con la misma sesión.</td></tr>
+          </tbody>
+        </table>
+      </div>
+      <div class="ojo"><strong>Ojo:</strong> los comentarios del código de la versión 1 saltan de <code>FALLA 5</code> a <code>FALLA 7</code>; la <code>FALLA 6</code> (los intentos ilimitados en <code>verificar.php</code>) no aparece en los fragmentos del informe, aunque sí se ve en las pruebas (CP-04).</div>
+    </section>
+
+    <!-- 06 Ejemplos -->
+    <section id="ejemplos">
+      <span class="numero">06 / ESCENARIOS</span>
+      <h2>Ejemplos paso a paso</h2>
+
+      <div class="escenario">
+        <h3>1. El caso más importante: Carlos cambia ?email= (CP-07)</h3>
+        <p class="accion"><strong>Acción:</strong> Carlos es empleado y tiene cuenta propia. Quiere entrar como Laura.</p>
+        <ol class="accion">
+          <li>Carlos pide un código para <strong>su</strong> correo y lo recibe.</li>
+          <li>Escribe su código, que es correcto.</li>
+          <li>En el paso 3, la dirección dice <code>nueva_clave.php?email=</code> seguido del correo de Carlos. La cambia a mano por el correo de Laura.</li>
+          <li>Elige una contraseña nueva y trata de entrar como Laura con esa clave.</li>
+        </ol>
+        <div class="comparacion">
+          <div class="version"><span class="franja">Vulnerable</span><p><code>nueva_clave.php</code> toma la cuenta de <code>$_GET['email']</code>: el paso 3 pasa a mostrar a Laura. La contraseña de Carlos queda en la cuenta de Laura, Carlos entra como Laura y Laura pierde el acceso.</p></div>
+          <div class="version protegido"><span class="franja">Protegido</span><p>La URL no se usa. Al verificar el código, el servidor guardó <code>$_SESSION['rec_usuario_id']</code> = Carlos, y Carlos no puede tocar la sesión (solo tiene el identificador). Se cambia solo la clave de Carlos; Laura conserva la suya.</p></div>
+        </div>
+        <p class="accion chico">Por qué funciona: la sesión vive en el servidor (<a href="modulo1_sesiones.html">módulo 1</a>). Lo que llega del navegador (URL, formularios, cookies) se puede editar; lo que está en <code>$_SESSION</code>, no.</p>
+      </div>
+
+      <div class="escenario">
+        <h3>2. Averiguar qué correos existen (CP-03)</h3>
+        <p class="accion"><strong>Acción:</strong> se pide un código para un correo que no está registrado y otro para Laura.</p>
+        <div class="comparacion">
+          <div class="version"><span class="franja">Vulnerable</span><p>Para el correo no registrado: “No existe ninguna cuenta registrada con ese correo”. Para Laura pasa al paso 2. Se nota la diferencia.</p></div>
+          <div class="version protegido"><span class="franja">Protegido</span><p>Los dos: “Si el correo está registrado, te enviamos un código de 6 números…”.</p></div>
+        </div>
+      </div>
+
+      <div class="escenario">
+        <h3>3. Adivinar el código (CP-04)</h3>
+        <p class="accion"><strong>Acción:</strong> se escriben 5 códigos incorrectos y después el correcto.</p>
+        <div class="comparacion">
+          <div class="version"><span class="franja">Vulnerable</span><p>Rechaza los 5 sin límite y acepta el correcto.</p></div>
+          <div class="version protegido"><span class="franja">Protegido</span><p>Al 5.º muestra “Superaste los 5 intentos…”, el código queda “bloqueado” y el correcto se rechaza.</p></div>
+        </div>
+      </div>
+
+      <div class="escenario">
+        <h3>4. Código viejo o ya usado (CP-05 y CP-06)</h3>
+        <p class="accion"><strong>Acción:</strong> se usa un código que ya sirvió una vez, o uno de hace 11 minutos.</p>
+        <div class="comparacion">
+          <div class="version"><span class="franja">Vulnerable</span><p>Los dos se aceptan: el código no vence ni se marca como usado.</p></div>
+          <div class="version protegido"><span class="franja">Protegido</span><p>Los dos se rechazan: “El código es incorrecto o ya no es válido”.</p></div>
+        </div>
+      </div>
+
+      <div class="escenario">
+        <h3>5. Pedir 5 códigos seguidos (CP-09)</h3>
+        <p class="accion"><strong>Acción:</strong> se piden 5 códigos para Laura en un momento.</p>
+        <div class="comparacion">
+          <div class="version"><span class="franja">Vulnerable</span><p>5 correos y 5 códigos válidos a la vez.</p></div>
+          <div class="version protegido"><span class="franja">Protegido</span><p>3 correos y 1 solo código activo; la 4.ª y la 5.ª se rechazan con la misma respuesta.</p></div>
+        </div>
+      </div>
+
+      <div class="escenario">
+        <h3>6. Contraseña nueva “123456” (CP-10)</h3>
+        <p class="accion"><strong>Acción:</strong> se completa la recuperación eligiendo <code>123456</code>.</p>
+        <div class="comparacion">
+          <div class="version"><span class="franja">Vulnerable</span><p>La acepta y se puede entrar con ella.</p></div>
+          <div class="version protegido"><span class="franja">Protegido</span><p>“La contraseña tiene que tener al menos 15 caracteres”. No cambia.</p></div>
+        </div>
+      </div>
+    </section>
+
+    <!-- 07 Pruebas -->
+    <section id="pruebas">
+      <span class="numero">07 / EVIDENCIAS</span>
+      <h2>Pruebas y resultados</h2>
+      <p>Resultados observados por el grupo (las pruebas se ejecutaron y lo observado coincidió con lo esperado en los 22 casos).</p>
+      <div class="tabla-contenedor">
+        <table>
+          <thead><tr><th>Caso</th><th>Versión vulnerable</th><th>Versión protegida</th></tr></thead>
+          <tbody>
+            <tr><td>CP-01 Login válido</td><td>Entra</td><td>Entra</td></tr>
+            <tr><td>CP-02 Recuperación legítima</td><td>Cambia la clave; sin aviso</td><td>Cambia la clave; llega el aviso</td></tr>
+            <tr><td>CP-03 Correo no registrado</td><td>Respuestas distintas</td><td>Misma respuesta</td></tr>
+            <tr><td>CP-04 5 códigos malos + el bueno</td><td>Acepta el bueno</td><td>Bloquea al 5.º; rechaza el bueno</td></tr>
+            <tr><td>CP-05 Código ya usado</td><td>Lo acepta</td><td>Lo rechaza</td></tr>
+            <tr><td>CP-06 Código de 11 minutos</td><td>Lo acepta</td><td>Lo rechaza por vencido</td></tr>
+            <tr><td>CP-07 Cambiar <code>?email=</code></td><td>Carlos entra como Laura</td><td>Solo cambia la de Carlos</td></tr>
+            <tr><td>CP-08 Código en la base</td><td>Se lee (365161), no vence</td><td>Hash de 60 caracteres, vence en 10 min</td></tr>
+            <tr><td>CP-09 5 solicitudes</td><td>5 correos, 5 códigos válidos</td><td>3 correos, 1 código activo</td></tr>
+            <tr><td>CP-10 Clave “123456”</td><td>La acepta</td><td>La rechaza</td></tr>
+            <tr><td>CP-11 Cerrar sesión y abrir el panel</td><td>Vuelve al login</td><td>Vuelve al login</td></tr>
+          </tbody>
+        </table>
+      </div>
+      <h3>Indicadores</h3>
+      <div class="tabla-contenedor">
+        <table>
+          <thead><tr><th>Indicador</th><th>Vulnerable</th><th>Protegida</th></tr></thead>
+          <tbody>
+            <tr><td>Casos de seguridad superados (CP-03 a CP-10)</td><td>0 de 8</td><td>8 de 8</td></tr>
+            <tr><td>Uso legítimo que funcionó (CP-01, 02, 11)</td><td>3 de 3</td><td>3 de 3</td></tr>
+            <tr><td>Códigos incorrectos antes del bloqueo</td><td>Sin bloqueo (300 de 300)</td><td>5</td></tr>
+            <tr><td>Validez del código</td><td>Sin vencimiento</td><td>10 minutos</td></tr>
+            <tr><td>Usos de un mismo código</td><td>Ilimitados</td><td>1</td></tr>
+            <tr><td>Cuentas ajenas modificadas (CP-07)</td><td>1</td><td>0</td></tr>
+            <tr><td>Largo mínimo de la clave nueva</td><td>1 carácter</td><td>15 caracteres</td></tr>
+          </tbody>
+        </table>
+      </div>
+      <p><strong>Estimación del grupo (calculada, no medida):</strong> sin límite, probar todos los códigos posibles en la versión vulnerable llevaría unos 32 minutos en su computadora; en la protegida, llegar a un 50 % de probabilidad llevaría más de un año.</p>
+      <div class="nota"><strong>Limitaciones que reconoce el grupo:</strong> entorno local, cuentas ficticias y correo simulado. No se midieron tiempos: si se activa el envío real por Gmail, la demora del envío podría delatar qué correos existen.</div>
+    </section>
+
+    <!-- 08 Trampas -->
+    <section id="trampas">
+      <span class="numero">08 / CUIDADO</span>
+      <h2>Trampas de examen</h2>
+      <div class="tabla-contenedor">
+        <table>
+          <thead><tr><th>Lo que parece</th><th>Lo correcto</th></tr></thead>
+          <tbody>
+            <tr><td>“<code>rand()</code> sirve para el código.”</td><td>No es criptográficamente seguro; se usa <code>random_int()</code>.</td></tr>
+            <tr><td>“Si el código está en un hash, ya no se puede adivinar.”</td><td>Solo hay un millón de códigos: lo que impide adivinarlo es el límite de intentos y el vencimiento.</td></tr>
+            <tr><td>“Si verifiqué el código, puedo confiar en el <code>?email=</code>.”</td><td>La URL la cambia el usuario; la cuenta sale de <code>$_SESSION</code>.</td></tr>
+            <tr><td>“Con validar en JavaScript alcanza.”</td><td>El navegador se puede modificar; la seguridad va en PHP.</td></tr>
+            <tr><td>“Decir ‘ese correo no existe’ ayuda al usuario.”</td><td>Ayuda al atacante a enumerar cuentas.</td></tr>
+            <tr><td>“El código puede servir varias veces mientras no venza.”</td><td>Un solo uso; al pedir otro, el anterior se anula.</td></tr>
+            <tr><td>“Limitar solicitudes no tiene contras.”</td><td>Se puede pedir códigos a nombre de otro y dejarlo esperando; el límite por IP afecta redes compartidas.</td></tr>
+            <tr><td>“La contraseña nueva debe tener mayúscula, número y símbolo.”</td><td>El grupo siguió a NIST: largo de 15 a 64 y sin contraseñas comunes, sin reglas de composición.</td></tr>
+            <tr><td>“Con aviso al titular ya no hace falta lo demás.”</td><td>El aviso solo permite enterarse; no evita el cambio.</td></tr>
+          </tbody>
+        </table>
+      </div>
+    </section>
+
+    <!-- 09 Preguntas probables -->
+    <section id="preguntas">
+      <span class="numero">09 / REPASO</span>
+      <h2>Preguntas probables</h2>
+      <p class="chico">Tocá cada pregunta para ver la respuesta.</p>
+      <details><summary>¿Por qué la recuperación es una “segunda puerta”?</summary><p>Porque permite cambiar la contraseña sin conocer la anterior: si es débil, anula un login fuerte.</p></details>
+      <details><summary>¿Cuáles son los 3 pasos del flujo?</summary><p>Escribir el correo, escribir el código recibido y elegir la contraseña nueva.</p></details>
+      <details><summary>¿Por qué random_int() y no rand()?</summary><p>rand() no es seguro para secretos (es predecible); random_int() sí.</p></details>
+      <details><summary>¿Por qué se guarda el hash del código?</summary><p>Para que quien lea la base no pueda usarlo.</p></details>
+      <details><summary>¿Cuánto dura el código y cuántas veces sirve?</summary><p>10 minutos y una sola vez.</p></details>
+      <details><summary>¿Qué pasa al 5.º código incorrecto?</summary><p>El código queda bloqueado y se rechaza hasta el correcto.</p></details>
+      <details><summary>¿Cuáles son los límites de solicitudes?</summary><p>3 por correo y 10 por IP cada 15 minutos.</p></details>
+      <details><summary>¿Qué pasó en CP-07?</summary><p>En la vulnerable, Carlos cambió ?email= y le cambió la clave a Laura. En la protegida la cuenta sale de la sesión y solo cambió la de Carlos.</p></details>
+      <details><summary>¿Por qué la sesión evita CP-07?</summary><p>Porque $_SESSION está en el servidor y el usuario no la puede editar; la URL sí.</p></details>
+      <details><summary>¿Para qué sirve el JavaScript del sistema?</summary><p>Solo para ayudar (mostrar la clave, contar caracteres). Los controles van en PHP.</p></details>
+      <details><summary>¿Qué requisitos tiene la contraseña nueva?</summary><p>De 15 a 64 caracteres y que no sea una contraseña común.</p></details>
+      <details><summary>¿Qué contras tienen los límites?</summary><p>Pedir códigos a nombre de otro lo deja esperando; el límite por IP afecta a quienes comparten red.</p></details>
+    </section>
+
+    <!-- 10 Glosario -->
+    <section id="glosario">
+      <span class="numero">10 / TÉRMINOS</span>
+      <h2>Glosario</h2>
+      <dl class="glosario">
+        <dt>Recuperación de contraseña</dt><dd>Función para cambiar la contraseña olvidada sin conocer la anterior.</dd>
+        <dt>Código de recuperación</dt><dd>Número de 6 cifras que se envía al correo para probar que la cuenta es tuya.</dd>
+        <dt>rand()</dt><dd>Función de PHP para números al azar; no es segura para secretos.</dd>
+        <dt>random_int()</dt><dd>Función de PHP que genera enteros criptográficamente seguros.</dd>
+        <dt>Criptográficamente seguro</dt><dd>Que no se puede predecir aunque se conozcan valores anteriores.</dd>
+        <dt>Vencimiento</dt><dd>Momento desde el cual el código ya no sirve (10 minutos).</dd>
+        <dt>Un solo uso</dt><dd>El código se marca como usado y no vuelve a servir.</dd>
+        <dt>Enumeración de usuarios</dt><dd>Descubrir qué correos tienen cuenta por la respuesta del sistema.</dd>
+        <dt>?email= (parámetro de la URL)</dt><dd>Dato que viaja en la dirección; el usuario lo puede cambiar.</dd>
+        <dt>$_SESSION</dt><dd>Datos guardados en el servidor; el usuario no los puede editar.</dd>
+        <dt>Bitácora</dt><dd>Registro de eventos (solicitudes, intentos, cambios) en la base.</dd>
+        <dt>Bandeja de correo simulada</dt><dd>Tabla <code>correos</code> donde se guardan los correos que el sistema “envía”.</dd>
+        <dt>PDO</dt><dd>Forma de PHP para conectarse a la base con consultas preparadas.</dd>
+        <dt>CWE-640</dt><dd>Debilidad: mecanismo débil de recuperación de contraseña olvidada.</dd>
+        <dt>NIST SP 800-63B-4</dt><dd>Guía que pide al menos 15 caracteres (si la clave es el único factor) y rechazar contraseñas comunes.</dd>
+      </dl>
+    </section>
+
+    <!-- 11 Examen -->
+    <section id="practica">
+      <span class="numero">11 / PRÁCTICA</span>
+      <h2>Examen de práctica</h2>
+      <p>Elegí una opción en cada pregunta. Se bloquea la pregunta y se muestra la explicación. El botón del final mezcla preguntas y opciones.</p>
+      <div id="examen" data-banco="preguntas4"><p class="chico">El examen necesita JavaScript activado.</p></div>
+    </section>
+  </main>
+</div>
+
+<footer>Programación IV · Módulo 4: recuperación segura de contraseñas · Fuentes: informe del grupo, consigna del TP, manual de PHP y OWASP</footer>
+<script src="js/preguntas4.js"></script>
+<script src="js/script.js"></script>
+</body>
+</html>

@@ -1,0 +1,85 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Resumen 2.º parcial · Programación IV</title>
+<link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+<header>
+  <div class="etiqueta">Programación · Seguridad informática</div>
+  <h1>Resumen de estudio para el 2.º parcial</h1>
+  <p>Teoría del trabajo práctico de investigación aplicada en sistemas de control de acceso. Un módulo por cada informe de grupo, con el código explicado, ejemplos y un examen de práctica.</p>
+  <div class="chips">
+    <span class="chip">Programación IV</span>
+    <span class="chip">5 temas</span>
+    <span class="chip">Examen teórico</span>
+  </div>
+</header>
+
+<div class="disposicion">
+  <nav class="indice grande" aria-label="Contenido">
+    <strong>CONTENIDO</strong>
+    <a href="#modulos">01 · Módulos</a>
+    <a href="#consigna">02 · Consigna</a>
+    <button type="button" class="boton-imprimir">Imprimir o guardar PDF</button>
+  </nav>
+
+  <main>
+    <section id="modulos" class="principal">
+      <span class="numero">01 / ÍNDICE</span>
+      <h2>Módulos</h2>
+      <p>Un módulo por informe. Cada uno tiene la teoría corta, el código explicado, ejemplos y un examen de práctica con código.</p>
+      <ol class="lista-modulos">
+        <li class="fila-modulo">
+          <span class="numero-modulo">01</span>
+          <div class="datos-modulo"><a class="nombre-modulo" href="modulo1_sesiones.html">Variables de sesión</a><p>Cómo el servidor recuerda quién inició sesión y cómo proteger las páginas privadas.</p></div>
+          <a class="estado disponible" href="modulo1_sesiones.html">Disponible</a>
+        </li>
+        <li class="fila-modulo">
+          <span class="numero-modulo">02</span>
+          <div class="datos-modulo"><a class="nombre-modulo" href="modulo2_contrasenas.html">Almacenamiento seguro de contraseñas</a><p>Guardar contraseñas con hash y verificarlas sin exponerlas.</p></div>
+          <a class="estado disponible" href="modulo2_contrasenas.html">Disponible</a>
+        </li>
+        <li class="fila-modulo">
+          <span class="numero-modulo">03</span>
+          <div class="datos-modulo"><a class="nombre-modulo" href="modulo3_fuerza_bruta.html">Fuerza bruta</a><p>Frenar los intentos repetidos de adivinar una contraseña.</p></div>
+          <a class="estado disponible" href="modulo3_fuerza_bruta.html">Disponible</a>
+        </li>
+        <li class="fila-modulo">
+          <span class="numero-modulo">04</span>
+          <div class="datos-modulo"><a class="nombre-modulo" href="modulo4_recuperacion.html">Recuperación segura de contraseñas</a><p>Restablecer una contraseña olvidada sin dejar la cuenta expuesta.</p></div>
+          <a class="estado disponible" href="modulo4_recuperacion.html">Disponible</a>
+        </li>
+        <li class="fila-modulo">
+          <span class="numero-modulo">05</span>
+          <div class="datos-modulo"><a class="nombre-modulo" href="modulo5_xss.html">Inyección de scripts (XSS)</a><p>Evitar que un texto escrito por un usuario se ejecute como código en la página.</p></div>
+          <a class="estado disponible" href="modulo5_xss.html">Disponible</a>
+        </li>
+        <li class="fila-modulo">
+          <span class="numero-modulo">06</span>
+          <div class="datos-modulo"><a class="nombre-modulo" href="examen_final.html">Examen final</a><p>35 preguntas al azar de los 5 temas.</p></div>
+          <a class="estado disponible" href="examen_final.html">Disponible</a>
+        </li>
+      </ol>
+    </section>
+
+    <section id="consigna">
+      <span class="numero">02 / CONSIGNA</span>
+      <h2>Lo que pide la consigna</h2>
+      <p>Cada grupo aplica su tema a un <strong>sistema de control de acceso</strong> de una empresa real o ficticia, con dos versiones del mismo sistema:</p>
+      <div class="comparacion">
+        <div class="version"><span class="franja">Vulnerable</span><p>Muestra la ausencia o la implementación incorrecta de la protección del tema.</p></div>
+        <div class="version protegido"><span class="franja">Protegido</span><p>Incorpora las medidas investigadas y permite comprobar su efecto con pruebas equivalentes.</p></div>
+      </div>
+      <div class="nota"><strong>Investigación aplicada:</strong> hay que investigar, implementar, probar, registrar evidencias y analizar resultados. No alcanza con juntar definiciones. Las pruebas se hacen en un entorno local, con cuentas y datos ficticios.</div>
+      <p class="chico">Fuente: consigna del trabajo práctico (ingeguille.github.io/tp).</p>
+    </section>
+  </main>
+</div>
+
+<footer>Programación IV · Resumen de estudio para el 2.º parcial · Seguridad informática</footer>
+<script src="js/script.js"></script>
+</body>
+</html>

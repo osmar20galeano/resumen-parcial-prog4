@@ -1,0 +1,376 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Módulo 2 · Almacenamiento seguro de contraseñas</title>
+<link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+<header>
+  <div class="etiqueta">Programación · Seguridad informática · Módulo 2</div>
+  <h1>Almacenamiento seguro de contraseñas</h1>
+  <p>Por qué una contraseña nunca se guarda tal cual, qué diferencia hay entre codificar, cifrar y hacer hash, y cómo se usan password_hash() y password_verify().</p>
+  <div class="chips">
+    <span class="chip">Informe 2 de 5</span>
+    <span class="chip">VitalCare · Clínica San Rafael (ficticia)</span>
+    <span class="chip">PHP · bcrypt</span>
+    <span class="chip">Examen: 20 preguntas</span>
+  </div>
+</header>
+
+<div class="disposicion">
+  <nav class="indice" aria-label="Contenido">
+    <strong>CONTENIDO</strong>
+    <a href="#esencial">01 · Lo esencial</a>
+    <a href="#conceptos">02 · Conceptos</a>
+    <a href="#caso">03 · El caso del grupo</a>
+    <a href="#medidas">04 · Medidas de protección</a>
+    <a href="#codigo">05 · El código explicado</a>
+    <a href="#ejemplos">06 · Ejemplos paso a paso</a>
+    <a href="#pruebas">07 · Pruebas y resultados</a>
+    <a href="#trampas">08 · Trampas de examen</a>
+    <a href="#preguntas">09 · Preguntas probables</a>
+    <a href="#glosario">10 · Glosario</a>
+    <a href="#practica">11 · Examen de práctica</a>
+    <button type="button" class="boton-imprimir">Imprimir o guardar PDF</button>
+    <a class="volver" href="index.html">Volver al inicio</a>
+  </nav>
+
+  <main>
+    <!-- 01 Lo esencial -->
+    <section id="esencial">
+      <span class="numero">01 / EN 1 MINUTO</span>
+      <h2>Lo esencial</h2>
+      <ol class="esencial">
+        <li>Las contraseñas <strong>nunca</strong> se guardan en texto plano. Si roban la base, el atacante tiene todas las cuentas.</li>
+        <li>Codificar (Base64) lo revierte cualquiera. Cifrar (AES) se revierte con la clave. El <strong>hash</strong> no se revierte: es lo que corresponde para contraseñas.</li>
+        <li>La <strong>sal</strong> (valor al azar por usuario) hace que dos claves iguales den hashes distintos. El <strong>costo</strong> hace el hash lento a propósito: bcrypt costo 12 tarda unos 0,23 s por intento; MD5, millonésimas.</li>
+        <li><code>password_hash($clave, PASSWORD_BCRYPT, ['cost' =&gt; 12])</code> genera la sal sola y la guarda dentro del hash (<code>$2y$12$...</code>, 60 caracteres).</li>
+        <li>Para verificar se usa <code>password_verify($clave, $hash)</code>. Nunca se compara con <code>===</code> contra un hash nuevo.</li>
+        <li>Límites: el hash no evita que roben la base, solo reduce el daño; una clave débil igual se adivina; bcrypt solo usa los primeros 72 bytes.</li>
+        <li>Lo que se demostró: con la base filtrada, la vulnerable dejó entrar con las claves leídas; en la protegida, el hash pegado como contraseña fue rechazado.</li>
+      </ol>
+    </section>
+
+    <!-- 02 Conceptos -->
+    <section id="conceptos">
+      <span class="numero">02 / TEORÍA</span>
+      <h2>Conceptos</h2>
+
+      <h3>1. Por qué no se guarda la contraseña tal cual</h3>
+      <p>Guardar en texto plano es guardar la contraseña exactamente como se escribió. Si alguien copia la base (un respaldo, phpMyAdmin, una inyección SQL), lee todas las claves y entra con cualquier cuenta. Pasó de verdad: en 2009 la empresa RockYou expuso más de 32 millones de cuentas guardadas en texto plano.</p>
+      <div class="ejemplo"><b class="titulo">Comparación</b>Es como guardar las llaves de todos los consultorios colgadas con una etiqueta que dice de quién es cada una. Al que entra a la oficina le alcanza con agarrarlas.</div>
+
+      <h3>2. Codificación, cifrado y hash</h3>
+      <p>Son tres cosas distintas. Solo el hash sirve para contraseñas, porque es de un solo sentido: del resultado no se vuelve al original.</p>
+      <div class="tabla-contenedor">
+        <table>
+          <thead><tr><th>Técnica</th><th>¿Se revierte?</th><th>Ejemplo</th><th>¿Para contraseñas?</th></tr></thead>
+          <tbody>
+            <tr><td>Codificación</td><td>Sí, cualquiera</td><td>Base64: <code>hola1234</code> → <code>aG9sYTEyMzQ=</code></td><td>No</td></tr>
+            <tr><td>Cifrado</td><td>Sí, con la clave</td><td>AES</td><td>No (si se filtra la clave, salen todas)</td></tr>
+            <tr><td>Hash</td><td>No</td><td>bcrypt, Argon2id</td><td>Sí, con sal y costo alto</td></tr>
+          </tbody>
+        </table>
+      </div>
+      <p><strong>Para recordar:</strong> codificar = otra forma de escribir; cifrar = candado con llave; hash = picadora de carne (no se vuelve atrás).</p>
+
+      <h3>3. La sal</h3>
+      <p>La sal es un valor al azar, distinto para cada usuario, que se mezcla con la contraseña antes de hacer el hash. Así, dos personas con la misma clave tienen hashes distintos. Además no sirven las tablas precalculadas (listas ya armadas de “clave → hash”).</p>
+<pre><code>password_hash("hola123", PASSWORD_BCRYPT, ['cost' =&gt; 12]);  // $2y$12$Xk3...
+password_hash("hola123", PASSWORD_BCRYPT, ['cost' =&gt; 12]);  // $2y$12$pQ9...  (otro distinto)</code></pre>
+
+      <h3>4. El costo: un hash lento a propósito</h3>
+      <p>El costo (factor de trabajo) hace que cada hash tarde más en calcularse. Al usuario no le molesta esperar 0,23 s una vez, pero el atacante que prueba millones de claves se frena. Por eso MD5 o SHA-1 no sirven para contraseñas: son rápidos. OWASP recomienda Argon2id, scrypt o bcrypt.</p>
+      <div class="ejemplo"><b class="titulo">Medición del grupo</b>Texto plano: ~28 millones de intentos por segundo. MD5: ~6 millones. bcrypt costo 12: ~4.</div>
+
+      <h3>5. password_hash()</h3>
+      <p>Es la función de PHP para guardar contraseñas. Genera la sal sola y devuelve un texto que trae todo junto: algoritmo, costo, sal y hash. Con bcrypt siempre mide 60 caracteres, por eso la columna de la contraseña tiene que ser <code>VARCHAR(255)</code> (el tamaño que recomienda el manual de PHP).</p>
+<pre><code>$claveHash = password_hash($clave, PASSWORD_BCRYPT, ['cost' =&gt; 12]);
+// $2y$12$ + 22 caracteres de sal + 31 de hash
+//  2y = bcrypt   12 = costo</code></pre>
+
+      <h3>6. password_verify() y password_needs_rehash()</h3>
+      <p><code>password_verify()</code> saca del hash guardado el algoritmo, el costo y la sal, calcula el hash de lo que se escribió y compara: devuelve <code>true</code> o <code>false</code>. Por eso pegar el hash robado como contraseña no sirve: el sistema hace el hash de ese texto y no coincide. <code>password_needs_rehash()</code> avisa si el hash guardado tiene un costo o algoritmo viejo, para recalcularlo cuando el usuario entra.</p>
+<pre><code>if (password_verify($clave, $fila['usu_clave'])) {      // true: clave correcta
+    if (password_needs_rehash($fila['usu_clave'], PASSWORD_BCRYPT, ['cost' =&gt; 12])) {
+        // calcular el hash nuevo y guardarlo
+    }
+}</code></pre>
+    </section>
+
+    <!-- 03 El caso -->
+    <section id="caso">
+      <span class="numero">03 / EL INFORME</span>
+      <h2>El caso del grupo</h2>
+      <div class="tabla-contenedor">
+        <table>
+          <tbody>
+            <tr><td><strong>Organización</strong></td><td>Clínica San Rafael (ficticia), en Caacupé. Sistema: VitalCare (pacientes, personal, servicios y cuentas).</td></tr>
+            <tr><td><strong>Usuarios</strong></td><td>Administrador, médicos, enfermería y recepción. Tres cuentas de prueba ficticias.</td></tr>
+            <tr><td><strong>Sistema</strong></td><td>PHP 8 + MySQL en XAMPP. Una base por versión: <code>vitalcare_vulnerable</code> y <code>vitalcare_protegido</code>. Solo cambian <code>php/usuarios.php</code> y <code>php/acceso.php</code>.</td></tr>
+            <tr><td><strong>Qué fallaba</strong></td><td>La columna <code>usu_clave</code> guardaba la contraseña tal cual se escribió.</td></tr>
+            <tr><td><strong>Riesgo</strong></td><td>Con la tabla robada se entra como cualquier médico o como el administrador y se ven datos de salud. Las claves también pueden probarse en el correo del personal.</td></tr>
+          </tbody>
+        </table>
+      </div>
+    </section>
+
+    <!-- 04 Medidas -->
+    <section id="medidas">
+      <span class="numero">04 / PROTECCIÓN</span>
+      <h2>Las medidas de protección</h2>
+      <div class="tabla-contenedor">
+        <table>
+          <thead><tr><th>Medida</th><th>Contra qué protege</th><th>Archivo</th></tr></thead>
+          <tbody>
+            <tr><td><code>password_hash()</code> con bcrypt costo 12</td><td>Leer las contraseñas de una base filtrada.</td><td><code>php/usuarios.php</code></td></tr>
+            <tr><td>Sal automática</td><td>Ver quiénes comparten clave; tablas precalculadas.</td><td>dentro de <code>password_hash()</code></td></tr>
+            <tr><td><code>password_verify()</code></td><td>Entrar pegando el hash filtrado como contraseña.</td><td><code>php/acceso.php</code></td></tr>
+            <tr><td><code>password_needs_rehash()</code></td><td>Que queden hashes con un costo viejo.</td><td><code>php/acceso.php</code></td></tr>
+          </tbody>
+        </table>
+      </div>
+    </section>
+
+    <!-- 05 Código -->
+    <section id="codigo">
+      <span class="numero">05 / CÓDIGO</span>
+      <h2>El código explicado</h2>
+      <p>Las dos versiones solo se diferencian en dos lugares. Los fragmentos son los del informe.</p>
+
+      <h3>1. Al guardar la contraseña: php/usuarios.php</h3>
+      <div class="comparacion">
+        <div class="version"><span class="franja">Vulnerable</span>
+<pre><code>// se guarda tal cual
+$claveGuardada = $clave;</code></pre>
+          <p>En la base queda la clave tal cual, legible.</p>
+        </div>
+        <div class="version protegido"><span class="franja">Protegido</span>
+<pre><code>// se guarda solo el hash bcrypt
+$claveHash = password_hash($clave, PASSWORD_BCRYPT, ['cost' =&gt; 12]);</code></pre>
+          <p>En la base queda <code>$2y$12$...</code> (60 caracteres).</p>
+        </div>
+      </div>
+
+      <h3>2. Al iniciar sesión: php/acceso.php</h3>
+      <div class="comparacion">
+        <div class="version"><span class="franja">Vulnerable</span>
+<pre><code>// compara texto con texto
+} elseif ($clave === $fila['usu_clave']) {</code></pre>
+          <p>Solo funciona si la base tiene la clave legible.</p>
+        </div>
+        <div class="version protegido"><span class="franja">Protegido</span>
+<pre><code>// recalcula el hash y compara
+} elseif (password_verify($clave, $fila['usu_clave'])) {
+    if (password_needs_rehash($fila['usu_clave'], PASSWORD_BCRYPT, ['cost' =&gt; 12])) {
+        // se vuelve a calcular el hash con el costo actual
+    }</code></pre>
+          <p>Calcula el hash de lo escrito con la sal guardada y compara.</p>
+        </div>
+      </div>
+
+      <h3>Línea por línea</h3>
+      <div class="tabla-contenedor">
+        <table class="tabla-lineas">
+          <thead><tr><th>Línea</th><th>Qué hace</th><th>Por qué importa</th><th>Qué pasa si se quita o se cambia</th></tr></thead>
+          <tbody>
+            <tr><td><code>$claveGuardada = $clave;</code></td><td>Copia la contraseña sin cambios.</td><td>Es la falla: la base guarda texto plano.</td><td>—</td></tr>
+            <tr><td><code>password_hash($clave, ...)</code></td><td>Calcula el hash con sal nueva.</td><td>En la base no queda la clave.</td><td>Si se guarda <code>$clave</code>, vuelve a ser texto plano.</td></tr>
+            <tr><td><code>PASSWORD_BCRYPT</code></td><td>Elige el algoritmo bcrypt.</td><td>Es lento y con sal.</td><td>Con <code>PASSWORD_DEFAULT</code> hoy también usa bcrypt. Con <code>md5()</code> sería rápido y sin sal.</td></tr>
+            <tr><td><code>['cost' =&gt; 12]</code></td><td>Fija el costo en 12.</td><td>Cada punto más duplica el tiempo.</td><td>Sin esto, PHP usa su costo por defecto.</td></tr>
+            <tr><td><code>$clave === $fila['usu_clave']</code></td><td>Compara texto con texto.</td><td>Solo sirve con texto plano.</td><td>Contra un hash nunca coincide: nadie podría entrar.</td></tr>
+            <tr><td><code>password_verify($clave, $fila['usu_clave'])</code></td><td>Recalcula con la sal y el costo guardados y compara.</td><td>Es la única forma correcta de comparar.</td><td>Si se reemplaza por <code>password_hash($clave) === $fila[...]</code>, nunca coincide (la sal es otra).</td></tr>
+            <tr><td><code>password_needs_rehash(...)</code></td><td>Dice si el hash guardado usa otro algoritmo o costo.</td><td>Permite subir el costo con el tiempo.</td><td>Los hashes viejos quedan con el costo viejo.</td></tr>
+          </tbody>
+        </table>
+      </div>
+      <div class="ojo"><strong>Ojo:</strong> en el fragmento del informe, el bloque de <code>password_needs_rehash()</code> solo tiene un comentario. Para que haga algo, adentro hay que calcular el hash nuevo y guardarlo:
+<pre><code>$nuevoHash = password_hash($clave, PASSWORD_BCRYPT, ['cost' =&gt; 12]);
+// UPDATE usuarios SET usu_clave = ? WHERE usu_id = ?  (consulta preparada)</code></pre>
+      </div>
+      <div class="ojo"><strong>Ojo (columna de la base):</strong> el hash bcrypt mide 60 caracteres. El manual de PHP recomienda una columna de 255 (<code>VARCHAR(255)</code>). Si la columna es más corta, el hash se corta o da error y nadie puede iniciar sesión.</div>
+    </section>
+
+    <!-- 06 Ejemplos -->
+    <section id="ejemplos">
+      <span class="numero">06 / ESCENARIOS</span>
+      <h2>Ejemplos paso a paso</h2>
+
+      <div class="escenario">
+        <h3>1. Se filtra la tabla usuarios (P1)</h3>
+        <p class="accion"><strong>Acción:</strong> el atacante consigue una copia de la tabla y mira la columna <code>usu_clave</code>.</p>
+        <div class="comparacion">
+          <div class="version"><span class="franja">Vulnerable</span><p>Lee las 3 contraseñas. Ya puede entrar con cualquiera.</p></div>
+          <div class="version protegido"><span class="franja">Protegido</span><p>Ve 3 hashes de 60 caracteres que empiezan con <code>$2y$12$</code>. No lee ninguna clave.</p></div>
+        </div>
+      </div>
+
+      <div class="escenario">
+        <h3>2. Dos usuarios con la misma contraseña (P1)</h3>
+        <p class="accion"><strong>Acción:</strong> carlos y laura tienen la misma clave.</p>
+        <div class="comparacion">
+          <div class="version"><span class="franja">Vulnerable</span><p>En la tabla aparece el mismo valor dos veces: se nota que la comparten.</p></div>
+          <div class="version protegido"><span class="franja">Protegido</span><p>Cada uno tiene su sal: los dos hashes son distintos y no se nota nada.</p></div>
+        </div>
+      </div>
+
+      <div class="escenario">
+        <h3>3. Pegar el valor filtrado como contraseña (P5)</h3>
+        <p class="accion"><strong>Acción:</strong> el atacante copia el valor de <code>usu_clave</code> de laura y lo escribe en el login.</p>
+        <div class="comparacion">
+          <div class="version"><span class="franja">Vulnerable</span><p>El valor es la contraseña real: entra. El registro de intentos lo anota como exitoso.</p></div>
+          <div class="version protegido"><span class="franja">Protegido</span><p><code>password_verify</code> calcula el hash <em>del hash pegado</em>, que no coincide: “clave incorrecta”. Queda como intento fallido.</p></div>
+        </div>
+      </div>
+
+      <div class="escenario">
+        <h3>4. Alta de un usuario nuevo (P4)</h3>
+        <p class="accion"><strong>Acción:</strong> el administrador crea un usuario nuevo con su clave.</p>
+        <div class="comparacion">
+          <div class="version"><span class="franja">Vulnerable</span><p>En la base queda la clave tal cual.</p></div>
+          <div class="version protegido"><span class="franja">Protegido</span><p>En la base queda un hash bcrypt.</p></div>
+        </div>
+      </div>
+
+      <div class="escenario">
+        <h3>5. El atacante prueba un diccionario fuera de línea (P8)</h3>
+        <p class="accion"><strong>Acción:</strong> con la tabla robada, prueba un millón de contraseñas comunes en su computadora.</p>
+        <div class="comparacion">
+          <div class="version"><span class="franja">Vulnerable</span><p>No necesita adivinar: ya tiene las claves.</p></div>
+          <div class="version protegido"><span class="franja">Protegido</span><p>A 0,23 s por intento, un millón de pruebas contra un solo hash tarda unos 2,7 días.</p></div>
+        </div>
+      </div>
+
+      <div class="escenario">
+        <h3>6. Uso normal (P2, P3 y P6)</h3>
+        <p class="accion"><strong>Acción:</strong> un usuario entra con su clave, después prueba una clave incorrecta y cierra sesión.</p>
+        <div class="comparacion">
+          <div class="version"><span class="franja">Vulnerable</span><p>Entra, rechaza la clave mala y vuelve al login.</p></div>
+          <div class="version protegido"><span class="franja">Protegido</span><p>Igual. La protección no cambia nada para el usuario legítimo.</p></div>
+        </div>
+      </div>
+    </section>
+
+    <!-- 07 Pruebas -->
+    <section id="pruebas">
+      <span class="numero">07 / EVIDENCIAS</span>
+      <h2>Pruebas y resultados</h2>
+      <p>Resultados observados por el grupo (Tabla III del informe).</p>
+      <div class="tabla-contenedor">
+        <table>
+          <thead><tr><th>ID</th><th>Prueba</th><th>Versión vulnerable</th><th>Versión protegida</th></tr></thead>
+          <tbody>
+            <tr><td>P1</td><td>Tabla filtrada</td><td>Se leen las 3 contraseñas; carlos y laura muestran el mismo valor.</td><td>No se lee ninguna; 3 hashes de 60 caracteres, distintos entre sí.</td></tr>
+            <tr><td>P2</td><td>Login válido</td><td>Entra al panel.</td><td>Entra al panel.</td></tr>
+            <tr><td>P3</td><td>Clave incorrecta</td><td>Rechaza el acceso.</td><td>Rechaza el acceso.</td></tr>
+            <tr><td>P4</td><td>Alta de usuario</td><td>Se guarda la clave tal cual.</td><td>Se guarda un hash bcrypt.</td></tr>
+            <tr><td>P5</td><td>Login con el valor filtrado</td><td>Entra.</td><td>Rechaza el acceso.</td></tr>
+            <tr><td>P6</td><td>Cierre de sesión</td><td>Vuelve al login.</td><td>Vuelve al login.</td></tr>
+            <tr><td>P7</td><td>Registro de intentos</td><td>El ingreso de laura queda como exitoso.</td><td>El intento de laura queda como fallido.</td></tr>
+          </tbody>
+        </table>
+      </div>
+      <h3>Tiempo por intento (P8)</h3>
+      <div class="tabla-contenedor">
+        <table>
+          <thead><tr><th>Método</th><th>Tiempo por intento</th><th>Intentos por segundo</th></tr></thead>
+          <tbody>
+            <tr><td>Comparación en texto plano</td><td>0,00000004 s</td><td>~28 millones</td></tr>
+            <tr><td>MD5 (no recomendado)</td><td>0,00000017 s</td><td>~6 millones</td></tr>
+            <tr><td>bcrypt costo 12</td><td>0,23 s</td><td>~4</td></tr>
+          </tbody>
+        </table>
+      </div>
+      <h3>Qué se demostró</h3>
+      <ul>
+        <li>Con la base filtrada, la vulnerable entregó las 3 contraseñas y dejó entrar con ellas; la protegida solo mostró hashes que no sirvieron para entrar.</li>
+        <li>El uso normal (entrar, rechazar la clave mala, cerrar sesión) funcionó igual en las dos.</li>
+        <li>Para el usuario, 0,23 s al entrar no se nota; para el atacante, es un freno enorme.</li>
+      </ul>
+      <div class="nota"><strong>Limitaciones que reconoce el grupo:</strong> el hash no impide que roben la base, solo reduce el daño. Una clave débil (por ejemplo, un nombre seguido de 123) igual se puede adivinar con tiempo. Los tiempos dependen de la computadora. OWASP hoy prefiere Argon2id y deja bcrypt cuando Argon2id no está disponible, y bcrypt solo usa los primeros 72 bytes de la contraseña.</div>
+    </section>
+
+    <!-- 08 Trampas -->
+    <section id="trampas">
+      <span class="numero">08 / CUIDADO</span>
+      <h2>Trampas de examen</h2>
+      <div class="tabla-contenedor">
+        <table>
+          <thead><tr><th>Lo que parece</th><th>Lo correcto</th></tr></thead>
+          <tbody>
+            <tr><td>“Base64 cifra la contraseña.”</td><td>Base64 es codificación: lo revierte cualquiera, sin clave.</td></tr>
+            <tr><td>“Cifrar es lo mismo que hacer hash.”</td><td>El cifrado se revierte con la clave; el hash no se revierte.</td></tr>
+            <tr><td>“Con MD5 ya está protegida.”</td><td>MD5 es rápido y, solo, sin sal: millones de intentos por segundo.</td></tr>
+            <tr><td>“Para verificar hago <code>password_hash($clave) === $guardado</code>.”</td><td>Nunca coincide: cada <code>password_hash</code> usa sal nueva. Se usa <code>password_verify</code>.</td></tr>
+            <tr><td>“La sal hay que guardarla en otra columna.”</td><td>Con <code>password_hash</code> la sal va dentro del mismo hash.</td></tr>
+            <tr><td>“La sal es secreta.”</td><td>No es secreta; su trabajo es que cada hash sea distinto.</td></tr>
+            <tr><td>“El hash impide que roben la base.”</td><td>No impide el robo; hace que lo robado no sirva para entrar.</td></tr>
+            <tr><td>“Si robo el hash, lo pego en el login y entro.”</td><td>El sistema calcula el hash de lo que escribiste; el hash del hash no coincide.</td></tr>
+            <tr><td>“Costo 13 tarda un poco más que costo 12.”</td><td>Tarda el doble: cada punto duplica el trabajo.</td></tr>
+            <tr><td>“Con <code>VARCHAR(50)</code> alcanza.”</td><td>bcrypt mide 60; se recomienda <code>VARCHAR(255)</code>.</td></tr>
+            <tr><td>“bcrypt usa toda la contraseña, por larga que sea.”</td><td>Solo usa los primeros 72 bytes.</td></tr>
+            <tr><td>“Con hash, una clave débil ya está segura.”</td><td>Una clave débil, como <code>123456</code>, igual se adivina con tiempo.</td></tr>
+          </tbody>
+        </table>
+      </div>
+    </section>
+
+    <!-- 09 Preguntas probables -->
+    <section id="preguntas">
+      <span class="numero">09 / REPASO</span>
+      <h2>Preguntas probables</h2>
+      <p class="chico">Tocá cada pregunta para ver la respuesta.</p>
+      <details><summary>¿Por qué no se guardan las contraseñas en texto plano?</summary><p>Porque si se filtra la base, el atacante tiene todas las claves y entra con cualquier cuenta.</p></details>
+      <details><summary>¿Qué diferencia hay entre codificación, cifrado y hash?</summary><p>La codificación la revierte cualquiera; el cifrado se revierte con la clave; el hash no se revierte.</p></details>
+      <details><summary>¿Qué es la sal y para qué sirve?</summary><p>Un valor al azar distinto por usuario. Hace que claves iguales den hashes distintos y que no sirvan las tablas precalculadas.</p></details>
+      <details><summary>¿Qué es el costo de bcrypt?</summary><p>El factor que hace lento el cálculo. Cada punto duplica el tiempo; el grupo usó 12 (~0,23 s).</p></details>
+      <details><summary>¿Por qué no usar MD5?</summary><p>Porque es rápido: permite millones de intentos por segundo.</p></details>
+      <details><summary>¿Qué devuelve password_hash()?</summary><p>Un texto con algoritmo, costo, sal y hash juntos. Con bcrypt empieza con <code>$2y$</code> y mide 60 caracteres.</p></details>
+      <details><summary>¿Cómo se verifica la contraseña al iniciar sesión?</summary><p>Con <code>password_verify($clave, $hashGuardado)</code>, que devuelve true o false.</p></details>
+      <details><summary>¿Qué hace password_needs_rehash()?</summary><p>Avisa si el hash guardado usa otro algoritmo o costo, para recalcularlo cuando el usuario entra.</p></details>
+      <details><summary>¿Por qué no sirve pegar el hash robado como contraseña?</summary><p>Porque el sistema hace el hash de lo escrito; el hash de un hash no coincide con el guardado.</p></details>
+      <details><summary>¿Qué se demostró en P1 y P5?</summary><p>P1: en la vulnerable se leen las claves; en la protegida, solo hashes distintos. P5: con el valor filtrado se entra en la vulnerable y se rechaza en la protegida.</p></details>
+      <details><summary>¿Qué algoritmos recomienda OWASP?</summary><p>Argon2id en primer lugar; scrypt o bcrypt si no está disponible.</p></details>
+    </section>
+
+    <!-- 10 Glosario -->
+    <section id="glosario">
+      <span class="numero">10 / TÉRMINOS</span>
+      <h2>Glosario</h2>
+      <dl class="glosario">
+        <dt>Texto plano</dt><dd>La contraseña guardada tal como se escribió.</dd>
+        <dt>Codificación</dt><dd>Cambiar la forma de escribir un dato (Base64). Se revierte sin clave.</dd>
+        <dt>Cifrado</dt><dd>Transformar un dato con una clave (AES). Se revierte con la clave.</dd>
+        <dt>Hash</dt><dd>Resultado de una función de un solo sentido: no se vuelve al original.</dd>
+        <dt>Sal</dt><dd>Valor al azar, distinto por usuario, que se mezcla con la contraseña antes del hash.</dd>
+        <dt>Costo (factor de trabajo)</dt><dd>Número que hace lento el hash; cada punto duplica el tiempo.</dd>
+        <dt>bcrypt</dt><dd>Algoritmo de hash lento para contraseñas; sus hashes empiezan con <code>$2y$</code>.</dd>
+        <dt>Argon2id</dt><dd>Algoritmo que OWASP recomienda en primer lugar.</dd>
+        <dt>MD5 / SHA-1</dt><dd>Hashes rápidos; no sirven para contraseñas.</dd>
+        <dt>password_hash()</dt><dd>Función de PHP que hace el hash con sal y costo.</dd>
+        <dt>password_verify()</dt><dd>Función de PHP que compara una contraseña con un hash guardado.</dd>
+        <dt>password_needs_rehash()</dt><dd>Indica si un hash debe recalcularse con el algoritmo o costo actual.</dd>
+        <dt>PASSWORD_BCRYPT / PASSWORD_DEFAULT</dt><dd>Constantes para elegir el algoritmo; DEFAULT hoy es bcrypt.</dd>
+        <dt>Tabla precalculada (rainbow table)</dt><dd>Lista ya armada de claves y sus hashes; la sal la vuelve inútil.</dd>
+        <dt>Ataque fuera de línea</dt><dd>Probar claves contra hashes robados en la computadora del atacante, sin pasar por el login.</dd>
+        <dt>Filtración de la base</dt><dd>Que alguien obtenga una copia de la base de datos.</dd>
+      </dl>
+    </section>
+
+    <!-- 11 Examen -->
+    <section id="practica">
+      <span class="numero">11 / PRÁCTICA</span>
+      <h2>Examen de práctica</h2>
+      <p>Elegí una opción en cada pregunta. Se bloquea la pregunta y se muestra la explicación. El botón del final mezcla preguntas y opciones.</p>
+      <div id="examen" data-banco="preguntas2"><p class="chico">El examen necesita JavaScript activado.</p></div>
+    </section>
+  </main>
+</div>
+
+<footer>Programación IV · Módulo 2: almacenamiento seguro de contraseñas · Fuentes: informe del grupo, consigna del TP, manual de PHP y OWASP</footer>
+<script src="js/preguntas2.js"></script>
+<script src="js/script.js"></script>
+</body>
+</html>

@@ -1,0 +1,411 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Módulo 5 · Inyección de scripts (XSS)</title>
+<link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+<header>
+  <div class="etiqueta">Programación · Seguridad informática · Módulo 5</div>
+  <h1>Inyección de scripts (XSS)</h1>
+  <p>Qué pasa cuando una página muestra lo que escribió un usuario sin tratarlo, y cómo se evita codificando la salida con htmlspecialchars() y usando textContent.</p>
+  <div class="chips">
+    <span class="chip">Informe 5 de 5</span>
+    <span class="chip">TecnoShop (ficticia)</span>
+    <span class="chip">PHP · HTML · JavaScript</span>
+    <span class="chip">Examen: 20 preguntas</span>
+  </div>
+</header>
+
+<div class="disposicion">
+  <nav class="indice" aria-label="Contenido">
+    <strong>CONTENIDO</strong>
+    <a href="#esencial">01 · Lo esencial</a>
+    <a href="#conceptos">02 · Conceptos</a>
+    <a href="#caso">03 · El caso del grupo</a>
+    <a href="#medidas">04 · Medidas de protección</a>
+    <a href="#codigo">05 · El código explicado</a>
+    <a href="#ejemplos">06 · Ejemplos paso a paso</a>
+    <a href="#pruebas">07 · Pruebas y resultados</a>
+    <a href="#trampas">08 · Trampas de examen</a>
+    <a href="#preguntas">09 · Preguntas probables</a>
+    <a href="#glosario">10 · Glosario</a>
+    <a href="#practica">11 · Examen de práctica</a>
+    <button type="button" class="boton-imprimir">Imprimir o guardar PDF</button>
+    <a class="volver" href="index.html">Volver al inicio</a>
+  </nav>
+
+  <main>
+    <!-- 01 Lo esencial -->
+    <section id="esencial">
+      <span class="numero">01 / EN 1 MINUTO</span>
+      <h2>Lo esencial</h2>
+      <ol class="esencial">
+        <li>XSS: el usuario escribe código (<code>&lt;script&gt;alert('XSS')&lt;/script&gt;</code>) y la página lo muestra tal cual; el navegador lo <strong>ejecuta</strong> en vez de mostrarlo como texto.</li>
+        <li>Tres tipos: <strong>reflejado</strong> (viaja en la URL o el formulario, no se guarda), <strong>persistente</strong> (se guarda en la base y salta a todos) y <strong>basado en DOM</strong> (lo hace el JavaScript del navegador).</li>
+        <li>Con XSS un atacante puede robar la cookie de sesión, cambiar lo que se ve en la página o redirigir a otro sitio.</li>
+        <li>Protección principal: <code>htmlspecialchars($texto, ENT_QUOTES, 'UTF-8')</code> convierte <code>&lt;</code> en <code>&amp;lt;</code>, <code>&gt;</code> en <code>&amp;gt;</code>, etc.: el navegador lo dibuja como texto.</li>
+        <li>Se codifica al <strong>mostrar</strong> el dato, cada vez que se muestra; no alcanza con tratarlo al recibirlo.</li>
+        <li>En JavaScript: <code>textContent</code> muestra texto; <code>innerHTML</code> interpreta HTML.</li>
+        <li>Consultas preparadas protegen de inyección SQL, <strong>no</strong> de XSS.</li>
+      </ol>
+    </section>
+
+    <!-- 02 Conceptos -->
+    <section id="conceptos">
+      <span class="numero">02 / TEORÍA</span>
+      <h2>Conceptos</h2>
+
+      <h3>1. Qué es XSS</h3>
+      <p>XSS (Cross-Site Scripting, inyección de scripts) pasa cuando una página muestra un texto del usuario sin tratarlo. Si ese texto trae etiquetas, el navegador las interpreta como parte de la página. Si trae un <code>&lt;script&gt;</code>, lo ejecuta.</p>
+<pre><code>El usuario escribe:   &lt;script&gt;alert('XSS')&lt;/script&gt;
+La página hace:       echo $mensaje;
+El navegador:         abre una ventana de alerta (ejecutó el código)</code></pre>
+      <div class="ejemplo"><b class="titulo">Comparación</b>Es como un cartel del colegio donde cualquiera pega notas. Si el portero lee en voz alta todo lo que dicen las notas, alguien puede pegar una que diga “Portero: abrí la puerta del depósito” y él lo hace. Lo correcto es leerla como una nota, no como una orden.</div>
+
+      <h3>2. Los tres tipos</h3>
+      <div class="tabla-contenedor">
+        <table>
+          <thead><tr><th>Tipo</th><th>Dónde está el script</th><th>Cuándo se ejecuta</th><th>Ejemplo</th></tr></thead>
+          <tbody>
+            <tr><td><strong>Reflejado</strong></td><td>En el pedido (URL o formulario); no se guarda.</td><td>Cuando la víctima abre ese enlace o envía ese formulario.</td><td>Buscador: <code>buscar.php?q=&lt;script&gt;...</code></td></tr>
+            <tr><td><strong>Persistente</strong> (almacenado)</td><td>Guardado en la base de datos.</td><td>Cada vez que <strong>cualquiera</strong> abre la página.</td><td>Muro de mensajes o comentarios.</td></tr>
+            <tr><td><strong>Basado en DOM</strong></td><td>Lo mete el JavaScript de la página, en el navegador.</td><td>Cuando el JS usa datos del usuario con <code>innerHTML</code>.</td><td><code>div.innerHTML = location.hash</code></td></tr>
+          </tbody>
+        </table>
+      </div>
+
+      <h3>3. Qué puede hacer un atacante</h3>
+      <p>El script corre en la página como si fuera del sitio, con la sesión de la víctima. Puede leer <code>document.cookie</code> y mandarse la cookie de sesión: con ese identificador entra como la víctima (ver <a href="modulo1_sesiones.html">módulo 1</a>). También puede cambiar lo que se ve (un falso formulario de login) o redirigir a otro sitio.</p>
+<pre><code>&lt;script&gt;location = 'https://sitio-falso.test';&lt;/script&gt;   // redirige</code></pre>
+
+      <h3>4. htmlspecialchars(): codificar la salida</h3>
+      <p>Convierte los caracteres especiales de HTML en entidades (códigos que el navegador dibuja como ese carácter, sin interpretarlo). Así <code>&lt;script&gt;</code> se ve en pantalla, pero no se ejecuta.</p>
+<pre><code>echo htmlspecialchars($texto, ENT_QUOTES, 'UTF-8');</code></pre>
+      <div class="tabla-contenedor">
+        <table>
+          <thead><tr><th>Carácter</th><th>Se convierte en</th><th>En pantalla se ve</th></tr></thead>
+          <tbody>
+            <tr><td><code>&lt;</code></td><td><code>&amp;lt;</code></td><td>&lt;</td></tr>
+            <tr><td><code>&gt;</code></td><td><code>&amp;gt;</code></td><td>&gt;</td></tr>
+            <tr><td><code>&amp;</code></td><td><code>&amp;amp;</code></td><td>&amp;</td></tr>
+            <tr><td><code>"</code></td><td><code>&amp;quot;</code></td><td>"</td></tr>
+            <tr><td><code>'</code></td><td><code>&amp;#039;</code></td><td>'</td></tr>
+          </tbody>
+        </table>
+      </div>
+      <p class="chico"><code>ENT_QUOTES</code> hace que convierta las dos comillas; <code>'UTF-8'</code> indica la codificación de caracteres.</p>
+
+      <h3>5. Se codifica al mostrar</h3>
+      <p>El momento importante es cuando el dato se escribe en la página, no cuando llega. En el muro, el mensaje se guarda tal cual en la base y se pasa por <code>htmlspecialchars()</code> <strong>cada vez</strong> que se muestra. Así, aunque haya un script guardado, siempre sale como texto.</p>
+<pre><code>// guardar: tal cual (con consulta preparada, por la inyección SQL)
+// mostrar: siempre codificado
+foreach ($mensajes as $m) {
+    echo '&lt;p&gt;' . htmlspecialchars($m['texto'], ENT_QUOTES, 'UTF-8') . '&lt;/p&gt;';
+}</code></pre>
+
+      <h3>6. En JavaScript: textContent o innerHTML</h3>
+      <p><code>textContent</code> pone el texto tal cual: las etiquetas se ven, no se ejecutan. <code>innerHTML</code> interpreta HTML: con datos del usuario es XSS basado en DOM. Este mismo sitio muestra las preguntas y explicaciones del examen con <code>textContent</code> justamente por eso.</p>
+<pre><code>p.textContent = '&lt;b&gt;Hola&lt;/b&gt;';   // se ve: &lt;b&gt;Hola&lt;/b&gt;
+p.innerHTML   = '&lt;b&gt;Hola&lt;/b&gt;';   // se ve: Hola en negrita</code></pre>
+    </section>
+
+    <!-- 03 El caso -->
+    <section id="caso">
+      <span class="numero">03 / EL INFORME</span>
+      <h2>El caso del grupo</h2>
+      <div class="tabla-contenedor">
+        <table>
+          <tbody>
+            <tr><td><strong>Empresa</strong></td><td>TecnoShop (ficticia). Vende equipos informáticos; sus empleados entran a un panel privado.</td></tr>
+            <tr><td><strong>Sistema</strong></td><td>PHP + MySQL en XAMPP (carpeta <code>lab_xss</code>, base <code>logintp</code>). Páginas: <code>login.php</code>, <code>xss_reflejado.php</code> (búsqueda), <code>xss_persistente.php</code> (muro de mensajes) y <code>solucion_segura.php</code>.</td></tr>
+            <tr><td><strong>Qué fallaba</strong></td><td>Lo que escribía el usuario se mostraba directamente en la página, sin codificar.</td></tr>
+            <tr><td><strong>Riesgo</strong></td><td>Ejecutar código en el navegador de otros empleados: robo de sesión, páginas falsas, redirecciones.</td></tr>
+          </tbody>
+        </table>
+      </div>
+    </section>
+
+    <!-- 04 Medidas -->
+    <section id="medidas">
+      <span class="numero">04 / PROTECCIÓN</span>
+      <h2>Las medidas de protección</h2>
+      <div class="tabla-contenedor">
+        <table>
+          <thead><tr><th>Medida</th><th>Contra qué protege</th></tr></thead>
+          <tbody>
+            <tr><td><code>htmlspecialchars($t, ENT_QUOTES, 'UTF-8')</code> al mostrar (la que usó el grupo)</td><td>XSS reflejado y persistente.</td></tr>
+            <tr><td><code>textContent</code> en lugar de <code>innerHTML</code></td><td>XSS basado en DOM.</td></tr>
+            <tr><td>Cookie de sesión con <code>HttpOnly</code></td><td>No evita el XSS, pero el script no puede leer la cookie.</td></tr>
+            <tr><td>Validar la entrada (largo, formato)</td><td>Ayuda, pero no reemplaza codificar la salida.</td></tr>
+          </tbody>
+        </table>
+      </div>
+      <p class="chico">La consigna pide para este tema: “codificación de salida según el contexto y tratamiento seguro de los datos mostrados”.</p>
+    </section>
+
+    <!-- 05 Código -->
+    <section id="codigo">
+      <span class="numero">05 / CÓDIGO</span>
+      <h2>El código explicado</h2>
+      <div class="ojo"><strong>Ojo:</strong> el informe no trae fragmentos de código; solo nombra las páginas y dice que la versión segura usa <code>htmlspecialchars()</code>. Todo el código de esta sección es <strong>ilustrativo</strong>, armado a partir de esa descripción.</div>
+
+      <h3>1. XSS reflejado: la búsqueda (xss_reflejado.php / solucion_segura.php)</h3>
+      <div class="comparacion">
+        <div class="version"><span class="franja">Vulnerable</span>
+<pre><code>$busqueda = $_GET['buscar'] ?? '';
+echo '&lt;p&gt;Resultados para: ' . $busqueda . '&lt;/p&gt;';</code></pre>
+          <p>Lo escrito vuelve a la página tal cual: el <code>&lt;script&gt;</code> se ejecuta.</p>
+        </div>
+        <div class="version protegido"><span class="franja">Protegido</span>
+<pre><code>$busqueda = $_GET['buscar'] ?? '';
+echo '&lt;p&gt;Resultados para: '
+   . htmlspecialchars($busqueda, ENT_QUOTES, 'UTF-8')
+   . '&lt;/p&gt;';</code></pre>
+          <p>El script se ve como texto.</p>
+        </div>
+      </div>
+
+      <h3>2. XSS persistente: el muro (xss_persistente.php)</h3>
+      <div class="comparacion">
+        <div class="version"><span class="franja">Vulnerable</span>
+<pre><code>// guardar (consulta preparada: sin inyección SQL)
+$stmt = $con-&gt;prepare('INSERT INTO mensajes (texto) VALUES (?)');
+$stmt-&gt;execute([$_POST['mensaje']]);
+
+// mostrar
+foreach ($mensajes as $m) {
+    echo '&lt;div class="mensaje"&gt;' . $m['texto'] . '&lt;/div&gt;';
+}</code></pre>
+          <p>La consulta preparada no sirve contra XSS: el script queda guardado y se ejecuta a todos.</p>
+        </div>
+        <div class="version protegido"><span class="franja">Protegido</span>
+<pre><code>// guardar: igual, tal cual
+$stmt = $con-&gt;prepare('INSERT INTO mensajes (texto) VALUES (?)');
+$stmt-&gt;execute([$_POST['mensaje']]);
+
+// mostrar: codificado cada vez
+foreach ($mensajes as $m) {
+    echo '&lt;div class="mensaje"&gt;'
+       . htmlspecialchars($m['texto'], ENT_QUOTES, 'UTF-8')
+       . '&lt;/div&gt;';
+}</code></pre>
+          <p>Lo guardado no cambia; lo que cambia es cómo se muestra.</p>
+        </div>
+      </div>
+
+      <h3>3. Qué recibe el navegador</h3>
+      <div class="comparacion">
+        <div class="version"><span class="franja">Vulnerable</span>
+<pre><code>&lt;div class="mensaje"&gt;&lt;script&gt;alert('XSS de prueba')&lt;/script&gt;&lt;/div&gt;</code></pre>
+          <p>Es una etiqueta real: la ejecuta.</p>
+        </div>
+        <div class="version protegido"><span class="franja">Protegido</span>
+<pre><code>&lt;div class="mensaje"&gt;&amp;lt;script&amp;gt;alert(&amp;#039;XSS de prueba&amp;#039;)&amp;lt;/script&amp;gt;&lt;/div&gt;</code></pre>
+          <p>Son entidades: en pantalla se lee <code>&lt;script&gt;alert('XSS de prueba')&lt;/script&gt;</code>.</p>
+        </div>
+      </div>
+
+      <h3>4. En JavaScript</h3>
+      <div class="comparacion">
+        <div class="version"><span class="franja">Vulnerable</span>
+<pre><code>caja.innerHTML = comentario;</code></pre>
+          <p>Si el comentario es <code>&lt;img src=x onerror=alert(1)&gt;</code>, la imagen falla y se ejecuta el <code>onerror</code>.</p>
+        </div>
+        <div class="version protegido"><span class="franja">Protegido</span>
+<pre><code>caja.textContent = comentario;</code></pre>
+          <p>Se ve el texto <code>&lt;img src=x onerror=alert(1)&gt;</code> y no pasa nada.</p>
+        </div>
+      </div>
+
+      <h3>Línea por línea</h3>
+      <div class="tabla-contenedor">
+        <table class="tabla-lineas">
+          <thead><tr><th>Línea</th><th>Qué hace</th><th>Por qué importa</th><th>Qué pasa si se quita o se cambia</th></tr></thead>
+          <tbody>
+            <tr><td><code>echo '...' . $busqueda . '...'</code></td><td>Escribe en la página lo que mandó el usuario.</td><td>Es la falla: el texto pasa a ser HTML.</td><td>—</td></tr>
+            <tr><td><code>htmlspecialchars($busqueda, ...)</code></td><td>Convierte <code>&lt; &gt; &amp; " '</code> en entidades.</td><td>El navegador lo dibuja como texto.</td><td>Vuelve el XSS reflejado (P04).</td></tr>
+            <tr><td><code>ENT_QUOTES</code></td><td>Convierte comillas dobles y simples.</td><td>Protege también dentro de atributos (<code>value='...'</code>).</td><td>Una comilla podría cerrar el atributo y agregar otro, como <code>onclick</code>.</td></tr>
+            <tr><td><code>'UTF-8'</code></td><td>Indica la codificación del texto.</td><td>Que se interpreten bien los caracteres.</td><td>Con otra codificación, los acentos pueden verse mal.</td></tr>
+            <tr><td><code>prepare('INSERT ... VALUES (?)')</code></td><td>Guarda el mensaje con consulta preparada.</td><td>Evita la inyección SQL.</td><td>Habría inyección SQL. Pero tenerla no evita el XSS.</td></tr>
+            <tr><td><code>htmlspecialchars($m['texto'], ...)</code> en el <code>foreach</code></td><td>Codifica cada mensaje al mostrarlo.</td><td>Aunque haya un script guardado, sale como texto.</td><td>Cada visitante ejecuta el script (P05).</td></tr>
+            <tr><td><code>caja.innerHTML = comentario</code></td><td>Interpreta el texto como HTML.</td><td>XSS basado en DOM.</td><td>—</td></tr>
+            <tr><td><code>caja.textContent = comentario</code></td><td>Pone el texto sin interpretarlo.</td><td>Evita el XSS en JavaScript.</td><td>Con <code>innerHTML</code>, vuelve el XSS.</td></tr>
+          </tbody>
+        </table>
+      </div>
+      <div class="ojo"><strong>Ojo (según el contexto):</strong> <code>htmlspecialchars()</code> sirve para texto dentro de HTML y para atributos entre comillas. No alcanza si el dato va dentro de un <code>&lt;script&gt;</code> o en un enlace <code>href=&quot;javascript:...&quot;</code>: cada lugar necesita su propia codificación. Por eso la consigna dice “codificación de salida según el contexto”.</div>
+    </section>
+
+    <!-- 06 Ejemplos -->
+    <section id="ejemplos">
+      <span class="numero">06 / ESCENARIOS</span>
+      <h2>Ejemplos paso a paso</h2>
+
+      <div class="escenario">
+        <h3>1. Texto normal (P02)</h3>
+        <p class="accion"><strong>Acción:</strong> se publica <code>Hola, este es un mensaje de prueba.</code> en el muro.</p>
+        <div class="comparacion">
+          <div class="version"><span class="franja">Vulnerable</span><p>Se ve bien.</p></div>
+          <div class="version protegido"><span class="franja">Protegido</span><p>Se ve igual. La protección no molesta al uso normal.</p></div>
+        </div>
+      </div>
+
+      <div class="escenario">
+        <h3>2. Una etiqueta HTML (P03)</h3>
+        <p class="accion"><strong>Acción:</strong> se publica <code>&lt;b&gt;Texto en negrita&lt;/b&gt;</code>.</p>
+        <div class="comparacion">
+          <div class="version"><span class="franja">Vulnerable</span><p>Se ve <b>Texto en negrita</b>: el navegador interpretó la etiqueta. Si interpreta <code>&lt;b&gt;</code>, también interpretará <code>&lt;script&gt;</code>.</p></div>
+          <div class="version protegido"><span class="franja">Protegido</span><p>Se ve literalmente <code>&lt;b&gt;Texto en negrita&lt;/b&gt;</code>.</p></div>
+        </div>
+      </div>
+
+      <div class="escenario">
+        <h3>3. XSS reflejado por un enlace (P04)</h3>
+        <p class="accion"><strong>Acción:</strong> el atacante arma un enlace a la búsqueda con el script en la URL y se lo manda a un empleado.</p>
+        <div class="comparacion">
+          <div class="version"><span class="franja">Vulnerable</span><p>Al abrir el enlace, la página devuelve el script y el navegador del empleado lo ejecuta (en la prueba, salió la alerta).</p></div>
+          <div class="version protegido"><span class="franja">Protegido</span><p><code>solucion_segura.php</code> muestra el script como texto; no sale ninguna alerta.</p></div>
+        </div>
+      </div>
+
+      <div class="escenario">
+        <h3>4. XSS persistente en el muro (P05)</h3>
+        <p class="accion"><strong>Acción:</strong> se publica el script en el muro y se recarga la página (F5).</p>
+        <div class="comparacion">
+          <div class="version"><span class="franja">Vulnerable</span><p>El script queda guardado en MySQL y la alerta salta en cada carga, a cualquiera que abra el muro.</p></div>
+          <div class="version protegido"><span class="franja">Protegido</span><p>El script también se guarda, pero se codifica al mostrarlo: siempre se ve como texto.</p></div>
+        </div>
+      </div>
+
+      <div class="escenario">
+        <h3>5. Robo de la cookie de sesión</h3>
+        <p class="accion"><strong>Acción:</strong> en lugar de <code>alert</code>, el atacante publica un script que lee <code>document.cookie</code> y la envía a su servidor.</p>
+        <div class="comparacion">
+          <div class="version"><span class="franja">Vulnerable</span><p>Cada empleado que abre el muro le manda su <code>PHPSESSID</code>; el atacante lo pone en su navegador y entra con esa sesión.</p></div>
+          <div class="version protegido"><span class="franja">Protegido</span><p>El script no se ejecuta. Y si hubiera otro XSS, una cookie <code>HttpOnly</code> no se podría leer desde JavaScript.</p></div>
+        </div>
+      </div>
+
+      <div class="escenario">
+        <h3>6. XSS basado en DOM</h3>
+        <p class="accion"><strong>Acción:</strong> la página muestra un saludo con <code>innerHTML</code> tomando el nombre de la URL, y el atacante pone <code>&lt;img src=x onerror=alert(1)&gt;</code> en lugar del nombre.</p>
+        <div class="comparacion">
+          <div class="version"><span class="franja">Con innerHTML</span><p>El JavaScript del navegador crea la imagen, falla y ejecuta el <code>onerror</code>. El servidor ni se entera.</p></div>
+          <div class="version protegido"><span class="franja">Con textContent</span><p>Se ve el texto tal cual. (El grupo definió este tipo, pero no lo probó.)</p></div>
+        </div>
+      </div>
+    </section>
+
+    <!-- 07 Pruebas -->
+    <section id="pruebas">
+      <span class="numero">07 / EVIDENCIAS</span>
+      <h2>Pruebas y resultados</h2>
+      <h3>Datos de prueba</h3>
+      <div class="tabla-contenedor">
+        <table>
+          <thead><tr><th>ID</th><th>Tipo</th><th>Contenido</th></tr></thead>
+          <tbody>
+            <tr><td>T1</td><td>Texto normal</td><td><code>Hola, este es un mensaje de prueba.</code></td></tr>
+            <tr><td>T2</td><td>HTML</td><td><code>&lt;b&gt;Texto en negrita&lt;/b&gt;</code></td></tr>
+            <tr><td>T3</td><td>Script</td><td><code>&lt;script&gt;alert('XSS de prueba')&lt;/script&gt;</code></td></tr>
+          </tbody>
+        </table>
+      </div>
+      <h3>Resultados observados</h3>
+      <div class="tabla-contenedor">
+        <table>
+          <thead><tr><th>Prueba</th><th>Versión vulnerable</th><th>Versión protegida</th></tr></thead>
+          <tbody>
+            <tr><td>P01 Login válido</td><td>Entra al panel</td><td>Entra al panel</td></tr>
+            <tr><td>P02 T1 en el muro</td><td>Se ve bien</td><td>Se ve igual</td></tr>
+            <tr><td>P03 T2 en el muro</td><td>Se ve en negrita (interpreta el HTML)</td><td>Se ven las etiquetas como texto</td></tr>
+            <tr><td>P04 T3 en la búsqueda (reflejado)</td><td>Ejecuta el script: sale la alerta</td><td>Muestra el script como texto, sin alerta</td></tr>
+            <tr><td>P05 T3 en el muro + F5 (persistente)</td><td>Se guarda y la alerta sale en cada carga</td><td>Se guarda, pero se ve como texto</td></tr>
+          </tbody>
+        </table>
+      </div>
+      <p>Las 10 ejecuciones (5 pruebas × 2 versiones) coincidieron con el resultado esperado.</p>
+      <div class="ojo"><strong>Ojo (datos de prueba que no coinciden):</strong> T3 dice <code>alert('XSS de prueba')</code>, pero los pasos de P04 y P05 usan <code>alert('Probando XSS')</code>. En P03, la versión vulnerable se probó con <code>&lt;b&gt;Este texto está en negrita&lt;/b&gt;</code> y la protegida con <code>&lt;b&gt;Texto en negrita&lt;/b&gt;</code>. La consigna pide las mismas entradas en las dos versiones. El resultado no cambia, pero en un informe correcto el dato tiene que ser idéntico.</div>
+    </section>
+
+    <!-- 08 Trampas -->
+    <section id="trampas">
+      <span class="numero">08 / CUIDADO</span>
+      <h2>Trampas de examen</h2>
+      <div class="tabla-contenedor">
+        <table>
+          <thead><tr><th>Lo que parece</th><th>Lo correcto</th></tr></thead>
+          <tbody>
+            <tr><td>“Uso consultas preparadas, así que no tengo XSS.”</td><td>Las consultas preparadas protegen de inyección SQL, no de XSS.</td></tr>
+            <tr><td>“Si valido la entrada, no hace falta codificar la salida.”</td><td>Validar ayuda, pero no reemplaza codificar al mostrar.</td></tr>
+            <tr><td>“Con la cookie HttpOnly ya no hay XSS.”</td><td>El XSS sigue; HttpOnly solo impide que el script lea la cookie.</td></tr>
+            <tr><td>“Codifico al guardar y listo.”</td><td>Se codifica al mostrar, cada vez que se muestra.</td></tr>
+            <tr><td>“XSS ataca al servidor.”</td><td>El código se ejecuta en el navegador de la víctima.</td></tr>
+            <tr><td>“Un <code>alert</code> no hace daño.”</td><td>Es solo una prueba; si se ejecuta un alert, se puede ejecutar cualquier cosa.</td></tr>
+            <tr><td>“El reflejado se guarda en la base.”</td><td>No se guarda; el que se guarda es el persistente.</td></tr>
+            <tr><td>“<code>innerHTML</code> y <code>textContent</code> son iguales.”</td><td><code>innerHTML</code> interpreta HTML; <code>textContent</code> muestra texto.</td></tr>
+            <tr><td>“htmlspecialchars borra las etiquetas.”</td><td>No borra nada: las convierte en entidades y se ven como texto.</td></tr>
+            <tr><td>“htmlspecialchars sirve para cualquier lugar.”</td><td>Sirve para HTML y atributos con comillas; dentro de <code>&lt;script&gt;</code> o en <code>href</code> hace falta otra codificación.</td></tr>
+          </tbody>
+        </table>
+      </div>
+    </section>
+
+    <!-- 09 Preguntas probables -->
+    <section id="preguntas">
+      <span class="numero">09 / REPASO</span>
+      <h2>Preguntas probables</h2>
+      <p class="chico">Tocá cada pregunta para ver la respuesta.</p>
+      <details><summary>¿Qué es XSS?</summary><p>Que una página muestre un texto del usuario sin tratarlo y el navegador ejecute el código que trae.</p></details>
+      <details><summary>¿Cuáles son los tres tipos?</summary><p>Reflejado (en el pedido, no se guarda), persistente (guardado en la base) y basado en DOM (lo hace el JavaScript del navegador).</p></details>
+      <details><summary>¿Qué diferencia hay entre reflejado y persistente?</summary><p>El reflejado afecta a quien abre el enlace o envía el formulario; el persistente está guardado y afecta a todos los que abren la página.</p></details>
+      <details><summary>¿Qué puede hacer un atacante con XSS?</summary><p>Robar la cookie de sesión, cambiar lo que se ve en la página y redirigir a otro sitio.</p></details>
+      <details><summary>¿Qué hace htmlspecialchars()?</summary><p>Convierte &lt; &gt; &amp; " ' en entidades HTML, así el navegador los muestra como texto.</p></details>
+      <details><summary>¿Para qué ENT_QUOTES y 'UTF-8'?</summary><p>ENT_QUOTES convierte las dos comillas; 'UTF-8' indica la codificación de caracteres.</p></details>
+      <details><summary>¿Cuándo se aplica htmlspecialchars()?</summary><p>Al mostrar el dato, cada vez que se muestra.</p></details>
+      <details><summary>¿Qué diferencia hay entre textContent e innerHTML?</summary><p>textContent muestra texto; innerHTML interpreta HTML.</p></details>
+      <details><summary>¿Las consultas preparadas evitan el XSS?</summary><p>No, evitan la inyección SQL.</p></details>
+      <details><summary>¿Para qué sirve HttpOnly?</summary><p>Para que JavaScript no pueda leer la cookie; no evita el XSS.</p></details>
+      <details><summary>¿Qué se demostró en P04 y P05?</summary><p>La vulnerable ejecutó el script (reflejado y en cada carga del muro); la protegida lo mostró como texto.</p></details>
+    </section>
+
+    <!-- 10 Glosario -->
+    <section id="glosario">
+      <span class="numero">10 / TÉRMINOS</span>
+      <h2>Glosario</h2>
+      <dl class="glosario">
+        <dt>XSS (Cross-Site Scripting)</dt><dd>Inyección de scripts: código del usuario que el navegador ejecuta como parte de la página.</dd>
+        <dt>Script</dt><dd>Código JavaScript; en HTML va entre <code>&lt;script&gt;</code> y <code>&lt;/script&gt;</code>.</dd>
+        <dt>Payload</dt><dd>El contenido malicioso que se envía (por ejemplo, el <code>&lt;script&gt;</code>).</dd>
+        <dt>XSS reflejado</dt><dd>El script viaja en el pedido y vuelve en la respuesta; no se guarda.</dd>
+        <dt>XSS persistente (almacenado)</dt><dd>El script queda guardado y se ejecuta a cada visitante.</dd>
+        <dt>XSS basado en DOM</dt><dd>El JavaScript de la página mete datos del usuario en el HTML.</dd>
+        <dt>DOM</dt><dd>La estructura de la página que el JavaScript puede leer y cambiar.</dd>
+        <dt>Codificación de salida</dt><dd>Convertir caracteres especiales antes de mostrarlos para que no se interpreten.</dd>
+        <dt>Entidad HTML</dt><dd>Código que representa un carácter, como <code>&amp;lt;</code> para <code>&lt;</code>.</dd>
+        <dt>htmlspecialchars()</dt><dd>Función de PHP que convierte &lt; &gt; &amp; " ' en entidades.</dd>
+        <dt>ENT_QUOTES</dt><dd>Opción de htmlspecialchars para convertir comillas simples y dobles.</dd>
+        <dt>textContent / innerHTML</dt><dd>Propiedades de JavaScript: poner texto / poner HTML.</dd>
+        <dt>document.cookie</dt><dd>Las cookies que JavaScript puede leer (no las HttpOnly).</dd>
+        <dt>HttpOnly</dt><dd>Marca de la cookie que impide leerla desde JavaScript.</dd>
+      </dl>
+    </section>
+
+    <!-- 11 Examen -->
+    <section id="practica">
+      <span class="numero">11 / PRÁCTICA</span>
+      <h2>Examen de práctica</h2>
+      <p>Elegí una opción en cada pregunta. Se bloquea la pregunta y se muestra la explicación. El botón del final mezcla preguntas y opciones.</p>
+      <div id="examen" data-banco="preguntas5"><p class="chico">El examen necesita JavaScript activado.</p></div>
+    </section>
+  </main>
+</div>
+
+<footer>Programación IV · Módulo 5: inyección de scripts (XSS) · Fuentes: informe del grupo, consigna del TP, manual de PHP y OWASP</footer>
+<script src="js/preguntas5.js"></script>
+<script src="js/script.js"></script>
+</body>
+</html>
